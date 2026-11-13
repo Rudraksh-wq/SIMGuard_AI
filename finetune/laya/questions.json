@@ -1,46 +1,495 @@
 {
-  "note": "Synthetic data. One fixed wording per question; use it identically in training, evaluation and inference.",
+  "note": "Synthetic data. Training rows use ONE fixed wording per question (the 'instructions' field). 'paraphrases' are for robustness tests or extra rows; use each one consistently if you add them. Every answer is computable from the event text.",
   "main_question": {
     "label": "is_fraud",
     "type": "noul",
     "instructions": "Does this SIM replacement request look like a SIM-swap fraud attempt?",
-    "answer_rule": "generator label (with ~2% noise)"
+    "paraphrases": [
+      "Is this SIM replacement request likely to be SIM-swap fraud?",
+      "Does this event look like an attempted SIM-swap takeover?",
+      "Would a fraud analyst flag this SIM replacement request as suspicious?",
+      "Is this SIM replacement request a probable fraud attempt?",
+      "Does the pattern in this request suggest SIM-swap fraud?",
+      "Should this SIM replacement be treated as a likely fraudulent swap?",
+      "Does this request look like an attacker trying to take over a phone number?",
+      "Is this event consistent with a SIM-swap fraud attempt?"
+    ],
+    "answer_rule": "generator label (about 2% noise)"
   },
   "indicator_questions": {
     "IMEI_CHANGE": {
       "type": "noul",
       "instructions": "Was the device IMEI changed during this SIM replacement request?",
+      "paraphrases": [
+        "Does this request show that the phone's IMEI is different from before?",
+        "Is a new device (changed IMEI) linked to this SIM replacement?",
+        "Did the subscriber's handset change as part of this SIM replacement?",
+        "Was the SIM replacement requested for a different device than the previous one?",
+        "Is there an IMEI change recorded for this request?",
+        "Does the event report that the IMEI changed?",
+        "Has the device identifier (IMEI) changed since the last SIM was used?",
+        "Is this SIM replacement tied to a new handset?"
+      ],
       "answer_rule": "imei_changed == 1"
     },
     "UNUSUAL_HOUR": {
       "type": "noul",
       "instructions": "Was this SIM replacement request made between 00:00 and 05:59?",
-      "answer_rule": "request_hour <= 5 (00:00-05:59)"
+      "paraphrases": [
+        "Was the request made at an unusual hour, between midnight and 5 AM?",
+        "Did this SIM replacement request happen during the night, between 00:00 and 05:59?",
+        "Is the request time inside the late-night window (00:00-05:59)?",
+        "Was the SIM replacement requested in the small hours of the night?",
+        "Does the request hour fall between 0 and 5?",
+        "Is this a night-time request, between midnight and 05:59?",
+        "Was this request made while most stores and support desks would be closed (00:00-05:59)?",
+        "Is the request hour an unusual one, from 00:00 to 05:59?"
+      ],
+      "answer_rule": "request_hour <= 5"
     },
     "LOCATION_GAP": {
       "type": "noul",
       "instructions": "Is the distance between the previous and current locations more than 300 km?",
+      "paraphrases": [
+        "Is there a large location gap of more than 300 km?",
+        "Does the location gap in this request exceed 300 km?",
+        "Did the subscriber appear more than 300 km from their previous location?",
+        "Is the current location far (over 300 km) from the previous one?",
+        "Is the gap between the earlier and present locations greater than 300 km?",
+        "Does this event show a large jump in location, above 300 km?",
+        "Is the reported location gap bigger than 300 km?",
+        "Are the previous and current locations more than 300 km apart?"
+      ],
       "answer_rule": "location_gap_km > 300"
     },
     "FAILED_AUTHENTICATIONS": {
       "type": "noul",
       "instructions": "Were there 3 or more failed authentication attempts?",
+      "paraphrases": [
+        "Were there multiple failed authentication attempts, 3 or more?",
+        "Does this request show at least 3 failed authentications?",
+        "Is the failed authentication count 3 or higher?",
+        "Did the requester fail authentication three or more times?",
+        "Is the number of failed authentications at least 3?",
+        "Were there repeated failed logins or verifications (3 or more) before this request?",
+        "Does the event report 3 or more failed authentication attempts?",
+        "Has authentication failed 3 times or more?"
+      ],
       "answer_rule": "failed_auth_count >= 3"
     },
     "SUPPORT_CALLS": {
       "type": "noul",
       "instructions": "Were there 2 or more support calls within the last 24 hours?",
+      "paraphrases": [
+        "Were there multiple support calls in the last 24 hours, 2 or more?",
+        "Did the subscriber or caller contact support at least twice in 24 hours?",
+        "Is the number of support calls in the last 24 hours 2 or more?",
+        "Does this request follow two or more support calls in a day?",
+        "Is the 24-hour support call count at least 2?",
+        "Were there repeated calls to support within one day (2 or more)?",
+        "Has support been contacted 2 times or more in the past 24 hours?",
+        "Does the event show elevated support call activity, 2 or more calls in 24 hours?"
+      ],
       "answer_rule": "support_calls_24h >= 2"
     },
     "RECENT_SIM_SWAP": {
       "type": "noul",
       "instructions": "Did a previous SIM swap occur less than 30 days ago?",
+      "paraphrases": [
+        "Was the last SIM swap on this number within the past 30 days?",
+        "Is this a repeat SIM swap under 30 days after the previous one?",
+        "Has this number had a SIM swap in the last 30 days?",
+        "Is the time since the last SIM swap shorter than 30 days?",
+        "Was there a recent SIM swap, less than a month ago?",
+        "Did the previous SIM swap happen fewer than 30 days ago?",
+        "Is the days-since-last-swap value below 30?",
+        "Is this SIM replacement happening soon (under 30 days) after another one?"
+      ],
       "answer_rule": "days_since_last_swap < 30"
     },
     "OTP_BURST": {
       "type": "noul",
       "instructions": "Is the OTP request count 4 or more?",
+      "paraphrases": [
+        "Does this event show an OTP burst of 4 or more requests?",
+        "Were there an unusually high number of OTP requests (at least 4)?",
+        "Is the OTP burst count 4 or higher?",
+        "Did the account receive 4 or more one-time-password requests in a burst?",
+        "Is the number of OTP requests unusually high, 4 or more?",
+        "Was there a surge of OTP requests, at least 4?",
+        "Does the OTP count reach 4 or more?",
+        "Is there an OTP burst in this event (4 or more)?"
+      ],
       "answer_rule": "otp_burst_count >= 4"
+    }
+  },
+  "derived_questions": {
+    "TWO_OR_MORE_INDICATORS": {
+      "type": "noul",
+      "instructions": "Do 2 or more of the seven risk indicators apply to this request?",
+      "answer_rule": "count >= 2"
+    },
+    "THREE_OR_MORE_INDICATORS": {
+      "type": "noul",
+      "instructions": "Do 3 or more of the seven risk indicators apply to this request?",
+      "answer_rule": "count >= 3"
+    },
+    "FIVE_OR_MORE_INDICATORS": {
+      "type": "noul",
+      "instructions": "Do 5 or more of the seven risk indicators apply to this request?",
+      "answer_rule": "count >= 5"
+    },
+    "NO_INDICATORS": {
+      "type": "noul",
+      "instructions": "Is this request free of all seven risk indicators?",
+      "answer_rule": "count == 0"
+    },
+    "ONLY_ONE_INDICATOR": {
+      "type": "noul",
+      "instructions": "Does exactly one of the seven risk indicators apply to this request?",
+      "answer_rule": "count == 1"
+    },
+    "IMEI_AND_OTP_BURST": {
+      "type": "noul",
+      "instructions": "Did the IMEI change and was there an OTP burst of 4 or more?",
+      "answer_rule": "imei_changed == 1 and otp_burst_count >= 4"
+    },
+    "IMEI_AND_NIGHT": {
+      "type": "noul",
+      "instructions": "Was the IMEI changed and the request made between 00:00 and 05:59?",
+      "answer_rule": "imei_changed == 1 and request_hour <= 5"
+    },
+    "NIGHT_AND_LOCATION_GAP": {
+      "type": "noul",
+      "instructions": "Was the request made between 00:00 and 05:59 with a location gap above 300 km?",
+      "answer_rule": "request_hour <= 5 and location_gap_km > 300"
+    },
+    "RECENT_SWAP_AND_IMEI": {
+      "type": "noul",
+      "instructions": "Was there a SIM swap under 30 days ago and also an IMEI change?",
+      "answer_rule": "days_since_last_swap < 30 and imei_changed == 1"
+    },
+    "FAILED_AUTH_AND_OTP_BURST": {
+      "type": "noul",
+      "instructions": "Were there 3 or more failed authentications and an OTP burst of 4 or more?",
+      "answer_rule": "failed_auth_count >= 3 and otp_burst_count >= 4"
+    },
+    "SUPPORT_AND_FAILED_AUTH": {
+      "type": "noul",
+      "instructions": "Were there 2 or more support calls and 3 or more failed authentications?",
+      "answer_rule": "support_calls_24h >= 2 and failed_auth_count >= 3"
+    },
+    "LOCATION_AND_RECENT_SWAP": {
+      "type": "noul",
+      "instructions": "Is the location gap above 300 km and the previous SIM swap under 30 days ago?",
+      "answer_rule": "location_gap_km > 300 and days_since_last_swap < 30"
+    },
+    "LOCATION_VERY_LARGE": {
+      "type": "noul",
+      "instructions": "Is the location gap 1000 km or more?",
+      "answer_rule": "location_gap_km >= 1000"
+    },
+    "LOCATION_SMALL": {
+      "type": "noul",
+      "instructions": "Is the location gap under 50 km?",
+      "answer_rule": "location_gap_km < 50"
+    },
+    "FAILED_AUTH_HIGH": {
+      "type": "noul",
+      "instructions": "Were there 5 or more failed authentication attempts?",
+      "answer_rule": "failed_auth_count >= 5"
+    },
+    "FAILED_AUTH_NONE": {
+      "type": "noul",
+      "instructions": "Were there no failed authentication attempts?",
+      "answer_rule": "failed_auth_count == 0"
+    },
+    "OTP_BURST_VERY_HIGH": {
+      "type": "noul",
+      "instructions": "Is the OTP request count 8 or more?",
+      "answer_rule": "otp_burst_count >= 8"
+    },
+    "SWAP_VERY_RECENT": {
+      "type": "noul",
+      "instructions": "Did the previous SIM swap occur less than 7 days ago?",
+      "answer_rule": "days_since_last_swap < 7"
+    },
+    "SWAP_OLD": {
+      "type": "noul",
+      "instructions": "Did the previous SIM swap occur 365 days ago or more?",
+      "answer_rule": "days_since_last_swap >= 365"
+    },
+    "SUPPORT_CALLS_HIGH": {
+      "type": "noul",
+      "instructions": "Were there 4 or more support calls within the last 24 hours?",
+      "answer_rule": "support_calls_24h >= 4"
+    },
+    "NO_DEVICE_CHANGE": {
+      "type": "noul",
+      "instructions": "Is the IMEI unchanged in this request?",
+      "answer_rule": "imei_changed == 0"
+    },
+    "OUTSIDE_NIGHT_WINDOW": {
+      "type": "noul",
+      "instructions": "Was the request made outside the 00:00-05:59 window?",
+      "answer_rule": "request_hour >= 6"
+    },
+    "EVENING_OR_NIGHT_REQUEST": {
+      "type": "noul",
+      "instructions": "Was the request made between 18:00 and 05:59?",
+      "answer_rule": "request_hour >= 18 or request_hour <= 5"
+    }
+  },
+  "additional_questions": {
+    "LOCATION_GAP_OVER_100": {
+      "type": "noul",
+      "instructions": "Is the location gap more than 100 km?",
+      "answer_rule": "location_gap_km > 100"
+    },
+    "LOCATION_GAP_OVER_500": {
+      "type": "noul",
+      "instructions": "Is the location gap more than 500 km?",
+      "answer_rule": "location_gap_km > 500"
+    },
+    "LOCATION_GAP_OVER_2000": {
+      "type": "noul",
+      "instructions": "Is the location gap more than 2000 km?",
+      "answer_rule": "location_gap_km > 2000"
+    },
+    "LOCATION_GAP_WITHIN_300": {
+      "type": "noul",
+      "instructions": "Is the location gap 300 km or less?",
+      "answer_rule": "location_gap_km <= 300"
+    },
+    "FAILED_AUTH_AT_LEAST_1": {
+      "type": "noul",
+      "instructions": "Was there at least 1 failed authentication attempt?",
+      "answer_rule": "failed_auth_count >= 1"
+    },
+    "FAILED_AUTH_AT_LEAST_2": {
+      "type": "noul",
+      "instructions": "Were there 2 or more failed authentication attempts?",
+      "answer_rule": "failed_auth_count >= 2"
+    },
+    "FAILED_AUTH_AT_LEAST_7": {
+      "type": "noul",
+      "instructions": "Were there 7 or more failed authentication attempts?",
+      "answer_rule": "failed_auth_count >= 7"
+    },
+    "SUPPORT_CALLS_AT_LEAST_1": {
+      "type": "noul",
+      "instructions": "Was there at least 1 support call in the last 24 hours?",
+      "answer_rule": "support_calls_24h >= 1"
+    },
+    "SUPPORT_CALLS_AT_LEAST_3": {
+      "type": "noul",
+      "instructions": "Were there 3 or more support calls in the last 24 hours?",
+      "answer_rule": "support_calls_24h >= 3"
+    },
+    "SUPPORT_CALLS_NONE": {
+      "type": "noul",
+      "instructions": "Were there no support calls in the last 24 hours?",
+      "answer_rule": "support_calls_24h == 0"
+    },
+    "OTP_AT_LEAST_2": {
+      "type": "noul",
+      "instructions": "Were there 2 or more OTP requests?",
+      "answer_rule": "otp_burst_count >= 2"
+    },
+    "OTP_AT_LEAST_6": {
+      "type": "noul",
+      "instructions": "Were there 6 or more OTP requests?",
+      "answer_rule": "otp_burst_count >= 6"
+    },
+    "OTP_AT_LEAST_10": {
+      "type": "noul",
+      "instructions": "Were there 10 or more OTP requests?",
+      "answer_rule": "otp_burst_count >= 10"
+    },
+    "OTP_NORMAL": {
+      "type": "noul",
+      "instructions": "Is the OTP request count normal, 1 or fewer?",
+      "answer_rule": "otp_burst_count <= 1"
+    },
+    "SWAP_UNDER_14": {
+      "type": "noul",
+      "instructions": "Did the previous SIM swap occur less than 14 days ago?",
+      "answer_rule": "days_since_last_swap < 14"
+    },
+    "SWAP_UNDER_3": {
+      "type": "noul",
+      "instructions": "Did the previous SIM swap occur less than 3 days ago?",
+      "answer_rule": "days_since_last_swap < 3"
+    },
+    "SWAP_OVER_90": {
+      "type": "noul",
+      "instructions": "Did the previous SIM swap occur more than 90 days ago?",
+      "answer_rule": "days_since_last_swap > 90"
+    },
+    "SWAP_OVER_1000": {
+      "type": "noul",
+      "instructions": "Did the previous SIM swap occur more than 1000 days ago?",
+      "answer_rule": "days_since_last_swap > 1000"
+    },
+    "HOUR_00_TO_02": {
+      "type": "noul",
+      "instructions": "Was the request made between 00:00 and 02:59?",
+      "answer_rule": "request_hour <= 2"
+    },
+    "HOUR_03_TO_05": {
+      "type": "noul",
+      "instructions": "Was the request made between 03:00 and 05:59?",
+      "answer_rule": "3 <= request_hour <= 5"
+    },
+    "HOUR_MORNING": {
+      "type": "noul",
+      "instructions": "Was the request made in the morning, between 06:00 and 11:59?",
+      "answer_rule": "6 <= request_hour <= 11"
+    },
+    "HOUR_AFTERNOON": {
+      "type": "noul",
+      "instructions": "Was the request made in the afternoon, between 12:00 and 17:59?",
+      "answer_rule": "12 <= request_hour <= 17"
+    },
+    "HOUR_EVENING": {
+      "type": "noul",
+      "instructions": "Was the request made in the evening, between 18:00 and 23:59?",
+      "answer_rule": "request_hour >= 18"
+    },
+    "HOUR_BUSINESS": {
+      "type": "noul",
+      "instructions": "Was the request made during business hours, between 09:00 and 17:59?",
+      "answer_rule": "9 <= request_hour <= 17"
+    },
+    "IMEI_AND_FAILED_AUTH": {
+      "type": "noul",
+      "instructions": "Was the IMEI changed and were there 3 or more failed authentications?",
+      "answer_rule": "imei_changed == 1 and failed_auth_count >= 3"
+    },
+    "IMEI_AND_SUPPORT": {
+      "type": "noul",
+      "instructions": "Was the IMEI changed and were there 2 or more support calls in 24 hours?",
+      "answer_rule": "imei_changed == 1 and support_calls_24h >= 2"
+    },
+    "IMEI_AND_LOCATION": {
+      "type": "noul",
+      "instructions": "Was the IMEI changed and is the location gap more than 300 km?",
+      "answer_rule": "imei_changed == 1 and location_gap_km > 300"
+    },
+    "IMEI_RECENT_SWAP_OTP": {
+      "type": "noul",
+      "instructions": "Was the IMEI changed, the previous swap under 30 days ago, and the OTP count 4 or more?",
+      "answer_rule": "imei_changed == 1 and days_since_last_swap < 30 and otp_burst_count >= 4"
+    },
+    "NIGHT_AND_OTP": {
+      "type": "noul",
+      "instructions": "Was the request made between 00:00 and 05:59 with an OTP count of 4 or more?",
+      "answer_rule": "request_hour <= 5 and otp_burst_count >= 4"
+    },
+    "NIGHT_AND_FAILED_AUTH": {
+      "type": "noul",
+      "instructions": "Was the request made between 00:00 and 05:59 with 3 or more failed authentications?",
+      "answer_rule": "request_hour <= 5 and failed_auth_count >= 3"
+    },
+    "NIGHT_AND_RECENT_SWAP": {
+      "type": "noul",
+      "instructions": "Was the request made between 00:00 and 05:59 with a previous swap under 30 days ago?",
+      "answer_rule": "request_hour <= 5 and days_since_last_swap < 30"
+    },
+    "LOCATION_AND_OTP": {
+      "type": "noul",
+      "instructions": "Is the location gap more than 300 km and the OTP count 4 or more?",
+      "answer_rule": "location_gap_km > 300 and otp_burst_count >= 4"
+    },
+    "LOCATION_AND_FAILED_AUTH": {
+      "type": "noul",
+      "instructions": "Is the location gap more than 300 km and were there 3 or more failed authentications?",
+      "answer_rule": "location_gap_km > 300 and failed_auth_count >= 3"
+    },
+    "SUPPORT_AND_OTP": {
+      "type": "noul",
+      "instructions": "Were there 2 or more support calls and an OTP count of 4 or more?",
+      "answer_rule": "support_calls_24h >= 2 and otp_burst_count >= 4"
+    },
+    "SUPPORT_AND_RECENT_SWAP": {
+      "type": "noul",
+      "instructions": "Were there 2 or more support calls and a previous swap under 30 days ago?",
+      "answer_rule": "support_calls_24h >= 2 and days_since_last_swap < 30"
+    },
+    "SUPPORT_AND_LOCATION": {
+      "type": "noul",
+      "instructions": "Were there 2 or more support calls and a location gap above 300 km?",
+      "answer_rule": "support_calls_24h >= 2 and location_gap_km > 300"
+    },
+    "RECENT_SWAP_AND_FAILED_AUTH": {
+      "type": "noul",
+      "instructions": "Was the previous swap under 30 days ago and were there 3 or more failed authentications?",
+      "answer_rule": "days_since_last_swap < 30 and failed_auth_count >= 3"
+    },
+    "RECENT_SWAP_AND_OTP": {
+      "type": "noul",
+      "instructions": "Was the previous swap under 30 days ago and the OTP count 4 or more?",
+      "answer_rule": "days_since_last_swap < 30 and otp_burst_count >= 4"
+    },
+    "IMEI_NIGHT_LOCATION": {
+      "type": "noul",
+      "instructions": "Was the IMEI changed, the request made between 00:00 and 05:59, and the location gap above 300 km?",
+      "answer_rule": "imei_changed == 1 and request_hour <= 5 and location_gap_km > 300"
+    },
+    "FAILED_AUTH_OTP_SUPPORT": {
+      "type": "noul",
+      "instructions": "Were there 3 or more failed authentications, an OTP count of 4 or more, and 2 or more support calls?",
+      "answer_rule": "failed_auth_count >= 3 and otp_burst_count >= 4 and support_calls_24h >= 2"
+    },
+    "FOUR_OR_MORE_INDICATORS": {
+      "type": "noul",
+      "instructions": "Do 4 or more of the seven risk indicators apply to this request?",
+      "answer_rule": "count >= 4"
+    },
+    "SIX_OR_MORE_INDICATORS": {
+      "type": "noul",
+      "instructions": "Do 6 or more of the seven risk indicators apply to this request?",
+      "answer_rule": "count >= 6"
+    },
+    "ALL_SEVEN_INDICATORS": {
+      "type": "noul",
+      "instructions": "Do all seven risk indicators apply to this request?",
+      "answer_rule": "count == 7"
+    },
+    "AT_MOST_TWO_INDICATORS": {
+      "type": "noul",
+      "instructions": "Do 2 or fewer of the seven risk indicators apply to this request?",
+      "answer_rule": "count <= 2"
+    },
+    "EXACTLY_TWO_INDICATORS": {
+      "type": "noul",
+      "instructions": "Do exactly 2 of the seven risk indicators apply to this request?",
+      "answer_rule": "count == 2"
+    },
+    "NO_DEVICE_CHANGE_DAYTIME": {
+      "type": "noul",
+      "instructions": "Was the IMEI unchanged and the request made outside the 00:00-05:59 window?",
+      "answer_rule": "imei_changed == 0 and request_hour >= 6"
+    },
+    "OTP_BURST_WITHOUT_IMEI_CHANGE": {
+      "type": "noul",
+      "instructions": "Was there an OTP count of 4 or more without an IMEI change?",
+      "answer_rule": "otp_burst_count >= 4 and imei_changed == 0"
+    },
+    "NIGHT_WITHOUT_IMEI_CHANGE": {
+      "type": "noul",
+      "instructions": "Was the request made between 00:00 and 05:59 without an IMEI change?",
+      "answer_rule": "request_hour <= 5 and imei_changed == 0"
+    },
+    "LOW_RISK_PROFILE": {
+      "type": "noul",
+      "instructions": "Does this request have at most one risk indicator and no IMEI change?",
+      "answer_rule": "count <= 1 and imei_changed == 0"
+    },
+    "DEVICE_OR_LOCATION": {
+      "type": "noul",
+      "instructions": "Was the IMEI changed or is the location gap more than 300 km?",
+      "answer_rule": "imei_changed == 1 or location_gap_km > 300"
     }
   }
 }
