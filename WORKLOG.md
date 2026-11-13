@@ -6,3 +6,5 @@
 4. First ladder launch failed on all 3 attempts: ImportError `from laya import train` (venv had laya 0.3.6, no training module). Upgraded laya to 0.4.31 (--no-deps); torch cu132 kept; pip check clean.
 5. Relaunched ladder (run 20261113_164704_a1_no_bias, CUDA, 3050). onnxruntime has no wheel for Python 3.15 (onnx verification may need another route).
 6. BASELINE (untouched Laya, before any training): val acc 0.2517 loss 1.735 | test acc 0.2565 | hard_dev acc 0.553 | hard_test acc 0.550 (bal_acc 0.50 everywhere = no signal). Gate sends ~all to NOUL. Speed p50 40.9 ms, p95 46.1 ms, batched 14.9 ms/item. Logged in runs/*/baseline.json.
+7. Epoch 1 of the 16-epoch ladder run was ~50 min -> est. ~13 h total. Aborted it (kept as runs/ABORTED_16ep_*), per user request to finish in 6-7 h.
+8. Relaunched single attempt `a1_6ep` (same settings as a1_no_bias: no bias, enc lr 1e-5, freeze-bottom 14) with --min-epochs 4 --max-epochs 6 --patience 2 (started 17:18; est. finish ~23:00-23:30). Ladder a2/a3 not run; will only consider them if a1_6ep misses targets and time allows.
