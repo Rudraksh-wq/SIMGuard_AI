@@ -46,3 +46,20 @@ discovery topic, and `QWEN_ENDPOINT`. Dead links are skipped automatically.
 The password comes from the Kaggle secret `QWEN_PASSWORD` (the notebook is public, so it must
 not be written in the code). Use "Save Version > Save & Run All" to keep the service up for
 up to 12 h without the browser tab open.
+
+## Qwen login and link in the frontend
+
+**System status → Qwen 3.5 2B on Kaggle** has a form for the notebook's link, username
+(`QWEN_USER` / `API_USER` secret, default `simguard`) and password (`QWEN_PASSWORD` secret).
+They are saved in this browser's local storage (tick "Remember in this browser"), so they
+survive page reloads and browser restarts; on each new visit the frontend hands them to the
+API, which keeps them in memory only and never writes them to disk. Use *Forget saved login &
+link* to remove them from the browser and the API. They override `QWEN_USER` / `QWEN_PASSWORD`
+in `.env`. The link is optional: leave it empty to use automatic discovery.
+
+## Starting and stopping the Qwen notebook
+
+Start it yourself from the Kaggle editor: open the notebook → Edit → Save Version → Save & Run All
+(Kaggle gives secrets only to runs started from the editor, not to runs started through its API,
+so there is no start button in the app). The notebook shuts itself down after 10 idle minutes
+(secret `QWEN_IDLE_MINUTES` changes this) and tells the API it is offline.

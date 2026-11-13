@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 import api_client
+from browser_store import browser_store
 from theme import *  # noqa: F403 - design tokens are intentionally centralized
 
 st.set_page_config(
@@ -1080,6 +1081,35 @@ banner_html = """
 """
 st.markdown(banner_html, unsafe_allow_html=True)
 
+QWEN_LOGIN_KEY = "qwen_login"  # {"endpoint", "user", "password"} in this browser's localStorage
+
+
+def store_request(action, value=None):
+    """Ask the browser to get / set / clear the saved Qwen login (answered on a later rerun)."""
+    st.session_state.qwen_store_nonce = st.session_state.get("qwen_store_nonce", 0) + 1
+    st.session_state.qwen_store_req = {"action": action, "value": value, "nonce": st.session_state.qwen_store_nonce}
+
+
+def saved_qwen_login():
+    """The login saved in this browser ({} if none). Also hands it to the API once per session."""
+    request = st.session_state.get("qwen_store_req") or {"action": "get", "value": None, "nonce": 0}
+    answer = browser_store(request["action"], QWEN_LOGIN_KEY, request["value"], request["nonce"],
+                           widget_key="qwen_login_store")
+    if isinstance(answer, dict) and answer.get("nonce") == request["nonce"]:
+        st.session_state.qwen_saved_login = answer.get("value") or {}
+        if not st.session_state.get("qwen_login_synced"):
+            st.session_state.qwen_login_synced = True
+            login = st.session_state.qwen_saved_login
+            if login.get("password") or login.get("endpoint"):
+                try:  # the API keeps the login in memory, so re-send it on every new visit
+                    api_client.set_qwen_settings(login.get("endpoint"), login.get("user"), login.get("password"),
+                                                 save_even_if_unreachable=True)
+                except Exception:
+                    pass
+    return st.session_state.get("qwen_saved_login") or {}
+
+
+saved_qwen_login()
 data = load_data()
 cases = data["cases"]
 health = data["health"]
@@ -1413,6 +1443,8 @@ def render_report_section(case, key):
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Qwen report failed: {exc}")
+                    if "unreachable" in str(exc).lower() or "no qwen link" in str(exc).lower():
+                        st.caption(f"Qwen is not running. {START_QWEN_HINT}")
 
 
 @st.fragment(run_every=3)
@@ -1697,32 +1729,94 @@ def render_status():
                + (f" · error: {laya['error']}" if laya.get("error") else ""))
     st.caption(f"Fusion uses weighted log-odds. Laya weight: {config.get('laya_weight', 'unknown')}; threshold: {config.get('laya_fraud_threshold', 'unknown')}.")
 
-    section("QWEN 3.5 2B CONNECTION", silver=True)
-    st.caption(f"Model {qwen.get('model', 'Qwen/Qwen3.5-2B')} · link in use: {qwen.get('endpoint') or 'none'} · {qwen.get('detail', '')}")
-    st.caption("The Kaggle notebook's link changes each session. The API finds it automatically through the discovery topic; "
-               "if that fails, paste the notebook's ENDPOINT line here. The link is tested before it is saved.")
-    with st.form("qwen_link"):
-        link = st.text_input("Kaggle notebook link", placeholder="https://xxxxxxxxxxxxxxxx.gradio.live")
-        save, forget = st.columns([1, 1])
-        do_save = save.form_submit_button("Test & save link", type="primary", width="stretch")
-        do_forget = forget.form_submit_button("Forget pasted link", width="stretch")
+    section("QWEN 3.5 2B ON KAGGLE", silver=True)
+    render_qwen_panel()
+
+
+KAGGLE_NOTEBOOK_URL = "https://www.kaggle.com/code/rudraksh12/qwen3-5"
+START_QWEN_HINT = (f"Start it from the Kaggle editor: open [the notebook]({KAGGLE_NOTEBOOK_URL}) → Edit → "
+                   "Save Version → Save & Run All. It is ready in about 2–4 minutes and is found automatically.")
+
+
+def render_qwen_panel():
+    st.caption("Qwen runs on a Kaggle GPU only while you need it. The notebook shuts itself down after "
+               "10 minutes without a report request, so it never burns GPU hours idle.")
+    _qwen_live_status()
+
+    saved = st.session_state.get("qwen_saved_login") or {}  # read once per run, at the top of the page
+    with st.form("qwen_login_form"):
+        st.markdown("**Qwen login & link** · saved in this browser")
+        link = st.text_input("Kaggle notebook link (optional)", value=saved.get("endpoint", ""),
+                             placeholder="https://xxxxxxxxxxxxxxxx.gradio.live",
+                             help="Leave empty: the link is found automatically each time the notebook starts.")
+        c1, c2 = st.columns(2)
+        user = c1.text_input("Username", value=saved.get("user", "simguard"),
+                             help="The notebook's QWEN_USER Kaggle secret (default simguard).")
+        password = c2.text_input("Password", value=saved.get("password", ""), type="password",
+                                 help="The notebook's QWEN_PASSWORD Kaggle secret.")
+        remember = st.checkbox("Remember in this browser", value=True,
+                               help="Stored in this browser's local storage only. The API keeps it in memory, never on disk.")
+        save_col, forget_col = st.columns(2)
+        do_save = save_col.form_submit_button("Save login & link", type="primary", width="stretch")
+        do_forget = forget_col.form_submit_button("Forget saved login & link", width="stretch")
+    flash = st.session_state.get("qwen_flash")  # stays visible until the next save / forget
+    if flash:
+        getattr(st, flash[0])(flash[1])
     if do_save:
-        if not link.strip():
-            st.error("Paste a link first.")
-        else:
+        login = {"endpoint": link.strip(), "user": user.strip() or "simguard", "password": password}
+        if remember:
+            store_request("set", login)
+        try:
+            result = api_client.set_qwen_settings(login["endpoint"], login["user"], login["password"])
+        except Exception as exc:
+            # keep the login even when the link test fails (e.g. the notebook is not running yet)
             try:
-                result = api_client.set_qwen_endpoint(link.strip())
-                st.success(f"Saved. Qwen answers at {result.get('override')}.")
-                load_data(force=True)
-            except Exception as exc:
-                st.error(f"Not saved: {exc}")
+                api_client.set_qwen_settings(None, login["user"], login["password"])
+            except Exception:
+                pass
+            flash = ("warning", f"Login saved, but the link was not: {exc}")
+        else:
+            check = result.get("check") or {}
+            if check.get("reachable"):
+                flash = ("success", f"Saved. Qwen answers at {check.get('endpoint')}.")
+            else:
+                flash = ("info", "Login saved. Qwen is not running right now. " + START_QWEN_HINT)
+        st.session_state.qwen_login_synced = True
+        st.session_state.qwen_saved_login = login if remember else saved
+        st.session_state.qwen_flash = flash
+        load_data(force=True)
+        st.rerun()  # redraw so the browser-storage component receives the "set" request
     if do_forget:
+        store_request("clear")
+        st.session_state.qwen_saved_login = {}
         try:
             api_client.clear_qwen_endpoint()
-            st.success("Pasted link removed; the API uses discovery and .env again.")
-            load_data(force=True)
+            api_client.set_qwen_settings(None, "", "")
+            st.session_state.qwen_flash = ("success", "Removed from this browser and from the API. The API falls back to its .env settings.")
         except Exception as exc:
-            st.error(f"Could not remove the link: {exc}")
+            st.session_state.qwen_flash = ("error", f"Could not reset the API: {exc}")
+        load_data(force=True)
+        st.rerun()
+
+
+@st.fragment(run_every=10)
+def _qwen_live_status():
+    """Whether Qwen answers, refreshed every 10 s while this page is open."""
+    try:
+        status = api_client.qwen_status()
+    except Exception as exc:
+        st.error(f"Could not read the Qwen status: {exc}")
+        return
+    online = bool(status.get("reachable"))
+    c1, c2 = st.columns(2)
+    c1.metric("Qwen 3.5 2B", "Online" if online else "Offline")
+    c2.metric("Login used", "from this browser" if status.get("credentials_from") == "frontend" else ".env on the server")
+    if online:
+        st.caption(f"Answering at {status.get('endpoint')} as user {status.get('user')}.")
+    else:
+        st.markdown(f"Qwen is not running. {START_QWEN_HINT} Until then, reports use the template.")
+        if status.get("detail"):
+            st.caption(f"Last check: {status.get('detail')}"[:300])
 
 
 def render_privacy_use():

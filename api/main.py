@@ -28,7 +28,9 @@ class InputRequest(BaseModel):
 
 
 class QwenEndpointRequest(BaseModel):
-    endpoint: str
+    endpoint: str | None = None
+    user: str | None = None
+    password: str | None = None
     save_even_if_unreachable: bool = False
 
 
@@ -163,7 +165,7 @@ def health() -> dict[str, object]:
     except Exception as error:
         laya = {"loaded": False, "error": str(error)}
 
-    qwen = {"model": config.qwen_model, **qwen_agent.ping()}
+    qwen = {"model": config.qwen_model, **qwen_agent.ping(cached=True)}
     return {
         "mock_models": config.mock_models,
         "db_ok": db_ok,
@@ -186,7 +188,15 @@ def get_qwen_settings() -> dict[str, object]:
 
 @app.post("/settings/qwen")
 def set_qwen_settings(request: QwenEndpointRequest) -> dict[str, object]:
-    """Paste the notebook's current link here when it changes; it is tested before saving."""
+    """Set the Qwen link and/or login from the frontend.
+
+    Username / password are applied first (kept in memory only), so the link is tested with them.
+    A link is saved only if Qwen answers there, unless save_even_if_unreachable is set.
+    """
+    if request.user is not None or request.password is not None:
+        qwen_agent.set_credentials(request.user, request.password)
+    if not request.endpoint or not request.endpoint.strip():
+        return {**qwen_agent.endpoint_status(), "check": qwen_agent.ping()}
     url = request.endpoint.strip().rstrip("/")
     if not qwen_agent.valid_url(url):
         raise HTTPException(status_code=422, detail="endpoint must be an http(s) URL")
@@ -195,6 +205,21 @@ def set_qwen_settings(request: QwenEndpointRequest) -> dict[str, object]:
         raise HTTPException(status_code=422, detail=f"Qwen did not answer at {url}: {check['detail']}")
     qwen_agent.set_override(url)
     return {**qwen_agent.endpoint_status(), "check": check}
+
+
+@app.get("/qwen/status")
+def qwen_status() -> dict[str, object]:
+    """Is Qwen answering, at which link, and whose login is used (for the frontend panel).
+
+    The Kaggle notebook is started by hand in the Kaggle editor; it shuts itself down when idle.
+    """
+    check = qwen_agent.ping(cached=True)
+    return {
+        "reachable": check["reachable"],
+        "endpoint": check.get("endpoint"),
+        "detail": check.get("detail"),
+        **{k: v for k, v in qwen_agent.endpoint_status().items() if k in ("user", "password_set", "credentials_from", "discovered")},
+    }
 
 
 @app.delete("/settings/qwen")

@@ -1,6 +1,8 @@
-"""Build kaggle/notebook/qwen3-5.ipynb from the live notebook's cells 0-2 + our launch cell.
+"""Build kaggle/notebook/qwen3-5.ipynb: cells 0-2 (install, load Qwen, generate_report) + our launch cell.
 
-Usage: python kaggle/build_notebook.py <pulled kernel json from the Kaggle API>
+Usage: python kaggle/build_notebook.py [SOURCE]
+  SOURCE = a kernel JSON pulled from the Kaggle API, or an .ipynb whose first 3 cells are used.
+           Default: the committed kaggle/notebook/qwen3-5.ipynb (so only the launch cell changes).
 Then:  kaggle kernels push -p kaggle/notebook
 """
 import json
@@ -14,8 +16,9 @@ PASSWORD_LITERAL = re.compile(r"""API_PASSWORD\s*=\s*["']""")
 HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE / "notebook"
 
-pulled = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-notebook = json.loads(pulled["blob"]["source"])
+source = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else OUT / "qwen3-5.ipynb"
+loaded = json.loads(source.read_text(encoding="utf-8"))
+notebook = json.loads(loaded["blob"]["source"]) if "blob" in loaded else loaded
 cells = notebook["cells"][:3]
 for cell in cells:
     cell["outputs"] = []  # never publish old outputs

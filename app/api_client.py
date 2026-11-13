@@ -84,9 +84,22 @@ def get_qwen_settings():
     return _checked(requests.get(f"{API_URL}/settings/qwen", timeout=60))
 
 
+def set_qwen_settings(endpoint=None, user=None, password=None, save_even_if_unreachable=False):
+    """Give the API the Qwen link and/or login. The API tests a link before saving it unless
+    save_even_if_unreachable; the login is kept in the API's memory only."""
+    body = {"endpoint": endpoint or None, "user": user, "password": password,
+            "save_even_if_unreachable": save_even_if_unreachable}
+    return _checked(requests.post(f"{API_URL}/settings/qwen", json=body, timeout=60))
+
+
 def set_qwen_endpoint(endpoint):
     """Save the Kaggle notebook's current link; the API tests it before saving."""
-    return _checked(requests.post(f"{API_URL}/settings/qwen", json={"endpoint": endpoint}, timeout=60))
+    return set_qwen_settings(endpoint=endpoint)
+
+
+def qwen_status():
+    """Whether Qwen answers, at which link, and whose login the API is using."""
+    return _checked(requests.get(f"{API_URL}/qwen/status", timeout=90))
 
 
 def clear_qwen_endpoint():

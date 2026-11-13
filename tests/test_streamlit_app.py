@@ -76,6 +76,10 @@ def fake_api(monkeypatch):
     api.regenerate_report = record("regenerate_report", lambda case_id: make_case(case_id, source="qwen"))
     api.get_qwen_settings = record("get_qwen_settings", {})
     api.set_qwen_endpoint = record("set_qwen_endpoint", lambda url: {"override": url, "check": {"reachable": True}})
+    api.set_qwen_settings = record("set_qwen_settings", lambda endpoint=None, user=None, password=None, save_even_if_unreachable=False:
+                                   {"override": endpoint, "check": {"reachable": bool(endpoint), "endpoint": endpoint}})
+    api.qwen_status = record("qwen_status", {"reachable": False, "endpoint": None, "detail": "HTTP 404",
+                                              "user": "simguard", "password_set": True, "credentials_from": "env"})
     api.clear_qwen_endpoint = record("clear_qwen_endpoint", {"override": None})
     monkeypatch.setitem(sys.modules, "api_client", api)
     monkeypatch.syspath_prepend(str(APP.parent))
@@ -159,11 +163,29 @@ def test_case_detail_offers_qwen_regeneration(fake_api):
     assert ("regenerate_report", ("case-1",), {}) in fake_api
 
 
-def test_status_page_shows_live_services_and_saves_a_qwen_link(fake_api):
+def test_status_page_shows_live_services_and_saves_the_qwen_login(fake_api):
     at = start("System status")
     page = " ".join(m.value for m in at.markdown)
     assert "LightGBM + Isolation Forest Pipeline" in page and "UNKNOWN" not in page
-    at.text_input[0].set_value("https://new-link.gradio.live")  # inside a form: submit in the same run
-    at.button(key="FormSubmitter:qwen_link-Test & save link").click().run()
+    assert "Save & Run All" in page  # Qwen offline: how to start the notebook by hand
+    assert not any("Start Qwen" in b.label for b in at.button)  # no start webhook
+    link, user, password = at.text_input
+    link.set_value("https://new-link.gradio.live")
+    user.set_value("simguard")
+    password.set_value("s3cret")  # inside a form: submit in the same run
+    at.button(key="FormSubmitter:qwen_login_form-Save login & link").click().run()
     assert not at.exception, at.exception
-    assert ("set_qwen_endpoint", ("https://new-link.gradio.live",), {}) in fake_api
+    call = next(c for c in fake_api if c[0] == "set_qwen_settings")
+    assert call[1] == ("https://new-link.gradio.live", "simguard", "s3cret")
+    # the login is also queued for this browser's local storage
+    assert at.session_state["qwen_store_req"]["action"] == "set"
+    assert at.session_state["qwen_store_req"]["value"]["password"] == "s3cret"
+
+
+def test_forget_clears_browser_and_api(fake_api):
+    at = start("System status")
+    at.button(key="FormSubmitter:qwen_login_form-Forget saved login & link").click().run()
+    assert not at.exception, at.exception
+    assert at.session_state["qwen_store_req"]["action"] == "clear"
+    assert "clear_qwen_endpoint" in names(fake_api)
+    assert ("set_qwen_settings", (None, "", ""), {}) in fake_api
