@@ -1,0 +1,46 @@
+{
+  "note": "Synthetic data. One fixed wording per question; use it identically in training, evaluation and inference.",
+  "main_question": {
+    "label": "is_fraud",
+    "type": "noul",
+    "instructions": "Does this SIM replacement request look like a SIM-swap fraud attempt?",
+    "answer_rule": "generator label (with ~2% noise)"
+  },
+  "indicator_questions": {
+    "IMEI_CHANGE": {
+      "type": "noul",
+      "instructions": "Was the device IMEI changed during this SIM replacement request?",
+      "answer_rule": "imei_changed == 1"
+    },
+    "UNUSUAL_HOUR": {
+      "type": "noul",
+      "instructions": "Was this SIM replacement request made between 00:00 and 05:59?",
+      "answer_rule": "request_hour <= 5 (00:00-05:59)"
+    },
+    "LOCATION_GAP": {
+      "type": "noul",
+      "instructions": "Is the distance between the previous and current locations more than 300 km?",
+      "answer_rule": "location_gap_km > 300"
+    },
+    "FAILED_AUTHENTICATIONS": {
+      "type": "noul",
+      "instructions": "Were there 3 or more failed authentication attempts?",
+      "answer_rule": "failed_auth_count >= 3"
+    },
+    "SUPPORT_CALLS": {
+      "type": "noul",
+      "instructions": "Were there 2 or more support calls within the last 24 hours?",
+      "answer_rule": "support_calls_24h >= 2"
+    },
+    "RECENT_SIM_SWAP": {
+      "type": "noul",
+      "instructions": "Did a previous SIM swap occur less than 30 days ago?",
+      "answer_rule": "days_since_last_swap < 30"
+    },
+    "OTP_BURST": {
+      "type": "noul",
+      "instructions": "Is the OTP request count 4 or more?",
+      "answer_rule": "otp_burst_count >= 4"
+    }
+  }
+}
