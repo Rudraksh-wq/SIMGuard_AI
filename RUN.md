@@ -28,8 +28,19 @@ python -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501
 - Without Qwen configured everything still works; reports fall back to the template.
 - `MOCK_MODELS=1` runs the API without LightGBM/Laya (for UI work).
 - Endpoints: `POST /analyze` (one event JSON), `POST /analyze/input` ({content, kind}),
+  `POST /parse` ({content, kind}: what was understood and what is missing, without analysing),
   `POST /analyze/upload` (file), `GET /cases`, `POST /cases/{id}/report`,
   `POST /cases/{id}/review`, `GET /health`.
+
+## Describing an event in your own words
+
+**Analyze → Describe in words** takes any wording: full sentences, short notes, a list, number words
+("forty five minutes"), units (minutes to years), percentages, yes/no statements in any order
+("device and IMSI changed but not the ICCID") and `key: value` lines. SIMGuard reads the 11 values out
+of the text. If some cannot be found it says exactly which (with an example of how to state each),
+shows what it did understand, and lets you fill only the gaps. It never guesses a missing value, and
+it does not use an LLM for this, so it works offline. Wording it cannot read, such as "SIM for 3
+days" without saying activated, is reported as missing rather than guessed.
 
 ## Qwen link (the Kaggle link is temporary)
 

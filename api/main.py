@@ -11,7 +11,7 @@ from agents import qwen_agent
 from agents.features_text import FEATURE_COLUMNS
 from agents.schemas import AnalyzeResponse, Event, InputInfo
 from api import db, mocks
-from api.input_parser import InputError, parse_input
+from api.input_parser import InputError, field_help, parse_input
 from api.pipeline import analyze, analyze_batch, laya_checkpoint, regenerate_report
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -68,6 +68,26 @@ def post_analyze(event: Event) -> AnalyzeResponse:
     return analyze(event, InputInfo(source="api"))
 
 
+def _describe_missing(fields: list[str]) -> list[dict[str, str]]:
+    help_by_field = {item["field"]: item for item in field_help()}
+    return [help_by_field[f] for f in fields if f in help_by_field]
+
+
+def _unreadable_detail(parsed: Any) -> dict[str, Any]:
+    """Say precisely what was understood and what is missing, not just that it failed."""
+    detail: dict[str, Any] = {"message": "no row could be analysed", "errors": parsed.errors[:20],
+                              "expected_fields": list(FEATURE_COLUMNS)}
+    first = parsed.rows[0] if parsed.rows else None
+    if first is not None and first.missing:
+        labels = [item["label"] for item in _describe_missing(first.missing)]
+        detail["message"] = (f"I understood {len(first.found)} of the {len(FEATURE_COLUMNS)} values and could not "
+                             f"find: {'; '.join(labels)}.")
+        detail["found"] = first.found
+        detail["missing"] = _describe_missing(first.missing)
+        detail["understood"] = first.info.notes
+    return detail
+
+
 def _run_input(content: str, filename: str | None, kind: str | None) -> InputAnalyzeResponse:
     try:
         parsed = parse_input(content, filename=filename, kind=kind)
@@ -76,11 +96,7 @@ def _run_input(content: str, filename: str | None, kind: str | None) -> InputAna
     background = os.getenv("QWEN_BACKGROUND", "1") != "0"
     results = analyze_batch(parsed.events, background=background) if parsed.events else []
     if not results and parsed.errors:
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "no row could be analysed", "errors": parsed.errors[:20],
-                    "expected_fields": list(FEATURE_COLUMNS)},
-        )
+        raise HTTPException(status_code=422, detail=_unreadable_detail(parsed))
     return InputAnalyzeResponse(
         source=parsed.source,
         rows_received=len(parsed.rows),
@@ -89,6 +105,33 @@ def _run_input(content: str, filename: str | None, kind: str | None) -> InputAna
         notes=parsed.notes,
         results=results,
     )
+
+
+class ParseRequest(BaseModel):
+    content: str
+    kind: Literal["csv", "json", "text"] | None = None
+    filename: str | None = None
+
+
+@app.post("/parse")
+def post_parse(request: ParseRequest) -> dict[str, Any]:
+    """Read the input without analysing it: what was understood, and exactly what is missing."""
+    try:
+        parsed = parse_input(request.content, filename=request.filename, kind=request.kind)
+    except InputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    rows = [
+        {
+            "ok": row.event is not None,
+            "found": row.found,
+            "missing": _describe_missing(row.missing),
+            "understood": row.info.notes,
+            "error": row.error,
+        }
+        for row in parsed.rows[:200]
+    ]
+    return {"source": parsed.source, "rows": rows, "rows_total": len(parsed.rows),
+            "fields": field_help(), "notes": parsed.notes}
 
 
 @app.post("/analyze/input", response_model=InputAnalyzeResponse)

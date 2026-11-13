@@ -71,6 +71,12 @@ def fake_api(monkeypatch):
     api.get_case = record("get_case", lambda case_id: stored.get(case_id, make_case(case_id)))
     api.analyze = record("analyze", lambda payload: make_case("case-api"))
     api.analyze_input = record("analyze_input", batch)
+    all_fields = [{"field": f, "label": f.replace("_", " "), "kind": "yes/no" if f.endswith("_flag") else "number",
+                   "example": "e.g. 3"} for f in FEATURES]
+    api.parse_text = record("parse_text", lambda content, kind=None: {
+        "rows": [{"ok": True, "found": FEATURES, "missing": [], "understood": ["gap: 45 (from \"45 minutes\")"], "error": None}],
+        "fields": all_fields})
+    api.ALL_FIELDS = all_fields
     api.analyze_upload = record("analyze_upload", batch)
     api.review_case = record("review_case", lambda case_id, status: {**make_case(case_id), "status": status})
     api.regenerate_report = record("regenerate_report", lambda case_id: make_case(case_id, source="qwen"))
@@ -109,6 +115,7 @@ def test_text_prompt_goes_to_the_input_parser_and_shows_the_case(fake_api):
     at.text_area(key="prompt_text").set_value("SIM changed 45 minutes after an OTP request.").run()
     at.button(key="analyze_text").click().run()
     assert not at.exception, at.exception
+    assert ("parse_text", ("SIM changed 45 minutes after an OTP request.", "text"), {}) in fake_api  # read first
     call = next(c for c in fake_api if c[0] == "analyze_input")
     assert call[1] == ("SIM changed 45 minutes after an OTP request.", "text")
     shown = " ".join(m.value for m in at.markdown) + " ".join(i.value for i in at.info)
@@ -189,3 +196,52 @@ def test_forget_clears_browser_and_api(fake_api):
     assert at.session_state["qwen_store_req"]["action"] == "clear"
     assert "clear_qwen_endpoint" in names(fake_api)
     assert ("set_qwen_settings", (None, "", ""), {}) in fake_api
+
+
+def partial_parse(missing_fields):
+    all_fields = sys.modules["api_client"].ALL_FIELDS
+    found = {k: v for k, v in FEATURES.items() if k not in missing_fields}
+    return lambda content, kind=None: {
+        "rows": [{"ok": False, "found": found, "error": "missing fields: " + ", ".join(missing_fields),
+                  "missing": [f for f in all_fields if f["field"] in missing_fields],
+                  "understood": ["Device changed: yes (from \"device changed\")"]}],
+        "fields": all_fields}
+
+
+def test_missing_values_are_named_and_can_be_filled_in_without_retyping(fake_api):
+    api = sys.modules["api_client"]
+    api.parse_text = partial_parse(["imsi_change_flag", "account_age_days"])
+    at = start("Analyze")
+    at.text_area(key="prompt_text").set_value("Device changed, 45 minutes after the OTP.").run()
+    at.button(key="analyze_text").click().run()
+    assert not at.exception, at.exception
+    assert not any(c[0] == "analyze_input" for c in fake_api)  # nothing is analysed with gaps
+    assert any("understood 9 of the 11 values" in w.value and "2 are still missing" in w.value for w in at.warning)
+    shown = " ".join(m.value for m in at.markdown)
+    assert "What I understood" in shown and "What I could not find" in shown
+
+    # submitting with a blank answer names what is still needed
+    at.button(key="FormSubmitter:text_gap_form-Analyze with these values").click().run()
+    assert any("Still needed" in e.value and "imsi change flag" in e.value for e in at.error)
+    assert not any(c[0] == "analyze_input" for c in fake_api)
+
+    at.selectbox(key="gap_imsi_change_flag").set_value("No")
+    at.text_input(key="gap_account_age_days").set_value("4 months")
+    at.button(key="FormSubmitter:text_gap_form-Analyze with these values").click().run()
+    assert not at.exception, at.exception
+    call = next(c for c in fake_api if c[0] == "analyze_input")
+    sent = call[1][0]
+    assert sent.startswith("Device changed, 45 minutes after the OTP.")  # the user's own words are kept
+    assert "imsi_change_flag: no" in sent and "account_age_days: 4 months" in sent and call[1][1] == "text"
+
+
+def test_an_unusable_value_is_explained_not_just_rejected(fake_api):
+    api = sys.modules["api_client"]
+    original = partial_parse([])
+    api.parse_text = lambda content, kind=None: {**original(content), "rows": [
+        {**original(content)["rows"][0], "error": "otp_and_sim_change_geo_hash_length: Input should be less than or equal to 1"}]}
+    at = start("Analyze")
+    at.text_area(key="prompt_text").set_value("whatever").run()
+    at.button(key="analyze_text").click().run()
+    assert not at.exception, at.exception
+    assert any("not usable" in e.value and "less than or equal to 1" in e.value for e in at.error)

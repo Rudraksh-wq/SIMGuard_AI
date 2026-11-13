@@ -1507,6 +1507,107 @@ def render_analysis_result(key):
         render_case_detail(options[chosen], key=key)
 
 
+def display_value(field, value):
+    """A value as an analyst reads it: yes/no for flags, units for durations."""
+    if field.endswith("_flag"):
+        return "Yes" if value else "No"
+    if field == "sim_swap_time_gap_minutes":
+        return f"{value:g} min"
+    if field in ("recent_sim_activation_days", "previous_sim_holder_tenure_days", "account_age_days"):
+        return f"{value:g} days"
+    return f"{value:g}" if isinstance(value, (int, float)) else str(value)
+
+
+def clear_gap_state():
+    st.session_state.pop("text_gap", None)
+    for key in [k for k in st.session_state if str(k).startswith("gap_")]:
+        del st.session_state[key]
+
+
+def read_then_analyze(prompt):
+    """Read the text first. Analyze only when all 11 values were found; otherwise say what is missing."""
+    try:
+        parsed = api_client.parse_text(prompt, "text")
+    except Exception as exc:
+        st.error(f"Could not read the text: {exc}")
+        return
+    row = parsed["rows"][0]
+    if row["ok"]:
+        clear_gap_state()
+        run_analysis(lambda: api_client.analyze_input(prompt, "text"), "text")
+        return
+    st.session_state.pop("text_response", None)
+    st.session_state.text_gap = {"prompt": prompt, "row": row, "fields": parsed.get("fields", [])}
+
+
+def render_text_gap(gap):
+    row = gap["row"]
+    labels = {item["field"]: item["label"] for item in gap["fields"]}
+    missing = row["missing"]
+    if not missing:  # the text was read but a value is not valid (e.g. a similarity above 1)
+        st.error(f"I read your text but a value is not usable: {row.get('error')}")
+    else:
+        count = len(missing)
+        st.warning(f"I understood {len(row['found'])} of the 11 values. {count} {'is' if count == 1 else 'are'} still "
+                   "missing: add them below, or reword your text and press Analyze again.")
+    if row["found"]:
+        st.markdown("**What I understood**")
+        table = pd.DataFrame([{"Value": labels.get(f, f), "Understood as": display_value(f, v)} for f, v in row["found"].items()])
+        st.dataframe(table, hide_index=True, width="stretch")
+    if row.get("understood"):
+        with st.expander("How I read your text"):
+            for note in row["understood"]:
+                st.caption(note)
+    if not missing:
+        return
+    with st.form("text_gap_form"):
+        st.markdown("**What I could not find**")
+        answers = {}
+        for item in missing:
+            key = f"gap_{item['field']}"
+            if item["kind"] == "yes/no":
+                answers[item["field"]] = st.selectbox(item["label"], ["Select…", "Yes", "No"], key=key)
+            else:
+                answers[item["field"]] = st.text_input(item["label"], key=key, placeholder=item["example"],
+                                                       help="Numbers with units are fine, e.g. 45 minutes, 3 days, 40%.")
+        submitted = st.form_submit_button("Analyze with these values", type="primary", width="stretch")
+    if not submitted:
+        return
+    blank = [labels.get(f, f) for f, v in answers.items() if v in ("", "Select…")]
+    if blank:
+        st.error("Still needed: " + "; ".join(blank))
+        return
+    # the answers go in as `key: value` lines under the original text, so the case keeps your own words
+    extra = [f"{field}: {value.lower() if value in ('Yes', 'No') else value.strip()}" for field, value in answers.items()]
+    combined = gap["prompt"].rstrip() + "\n" + "\n".join(extra)
+    st.session_state.pop("text_response", None)
+    run_analysis(lambda: api_client.analyze_input(combined, "text"), "text")
+    if st.session_state.get("text_response"):
+        clear_gap_state()
+        st.rerun()
+
+
+def render_words_tab():
+    st.caption("Write the event however you like: full sentences, short notes, a list or `key: value` lines. SIMGuard reads "
+               "the 11 values out of your text. If something is missing it tells you exactly what, and you can add it right here.")
+    prompt = st.text_area("Describe the event", height=170, placeholder=PROMPT_EXAMPLE, key="prompt_text")
+    c1, c2 = st.columns([1, 4])
+    if c1.button("Analyze text", type="primary", key="analyze_text"):
+        clear_gap_state()
+        if not prompt.strip():
+            st.error("Write a description first.")
+        else:
+            read_then_analyze(prompt)
+    if c2.button("Use the example", key="prompt_example"):
+        st.session_state.prompt_text = PROMPT_EXAMPLE
+        clear_gap_state()
+        st.rerun()
+    gap = st.session_state.get("text_gap")
+    if gap:
+        render_text_gap(gap)
+    render_analysis_result("text")
+
+
 def render_analyze():
     render_hero(
         tag="WORKSPACE // 03",
@@ -1581,19 +1682,7 @@ def render_analyze():
         render_analysis_result("guided")
 
     with words:
-        st.caption("Describe one event in plain English or as `key: value` lines. The API reads the 11 features out of the text; "
-                   "anything it cannot find is reported, never guessed.")
-        prompt = st.text_area("Event description", height=150, placeholder=PROMPT_EXAMPLE, key="prompt_text")
-        c1, c2 = st.columns([1, 4])
-        if c1.button("Analyze text", type="primary", key="analyze_text"):
-            if not prompt.strip():
-                st.error("Write a description first.")
-            else:
-                run_analysis(lambda: api_client.analyze_input(prompt, "text"), "text")
-        if c2.button("Use the example", key="prompt_example"):
-            st.session_state.prompt_text = PROMPT_EXAMPLE
-            st.rerun()
-        render_analysis_result("text")
+        render_words_tab()
 
     with upload:
         st.markdown("#### Analyze a file")
