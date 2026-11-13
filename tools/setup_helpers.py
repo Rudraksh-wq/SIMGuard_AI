@@ -136,6 +136,10 @@ def laya_ensure(folder: str, update: bool = True) -> None:
         return
     try:
         from huggingface_hub import HfApi, hf_hub_download
+        from huggingface_hub.utils import logging as hf_logging
+
+        # the model repo is public: no token is needed, so hide the "unauthenticated requests" warning
+        hf_logging.set_verbosity_error()
 
         info = HfApi().model_info(LAYA_REPO, files_metadata=True)
     except Exception as error:
