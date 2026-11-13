@@ -64,6 +64,14 @@ def analyze_upload(filename, content):
     )
 
 
+def parse_text(content, kind=None):
+    """Read the input without analysing it: per row, what was understood and exactly what is missing."""
+    body = {"content": content}
+    if kind:
+        body["kind"] = kind
+    return _checked(requests.post(f"{API_URL}/parse", json=body, timeout=60))
+
+
 def analyze_input(content, kind=None):
     """Free-text prompt, pasted JSON or pasted CSV -> parsed events -> batch analysis.
 
