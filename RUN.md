@@ -1,5 +1,43 @@
 # Running SIMGuard AI
 
+## One command (Windows)
+
+Double-click `setup.bat` (or run it in a terminal). It sets up whatever is missing, starts everything,
+checks that it all works, and opens http://127.0.0.1:8501:
+
+1. pulls the latest code from GitHub (only when you have no local edits; never merges)
+2. Python environment (installs Python 3.12 with uv if the PC has none) and PyTorch (GPU build when an
+   NVIDIA GPU is present, otherwise CPU)
+3. pinned packages, `.env`, training of LightGBM + Isolation Forest if needed
+4. downloads the fine-tuned Laya model from Hugging Face if missing or changed
+5. starts the API (port 8000) and the Streamlit frontend (port 8501) **in the background**, with their
+   output in `logs\`
+6. **verifies**: API, LightGBM + Isolation Forest, case database, Laya loaded, free-text reading, the
+   frontend, and every frontend page rendering against the live API. Qwen offline is only a warning
+   (reports then use the template).
+
+It can be run any number of times:
+
+- servers that are already running and current are reused (a re-run takes seconds)
+- servers started before a `git pull` or a code edit are **restarted automatically** with the new code
+- if port 8000 or 8501 is used by another program, the next free port is used; the final message shows
+  the real addresses
+- if a server cannot start, the last lines of its log are printed on screen
+
+| Command | What it does |
+|---|---|
+| `setup.bat` | set up, start, verify, open the browser |
+| `stop.bat` or `setup.bat --stop` | stop the API and frontend |
+| `setup.bat --restart` | stop, then start again |
+| `setup.bat --status` | show whether they are running |
+| `setup.bat --no-browser` / `--no-pause` | do not open the browser / never wait for a key (for scripts) |
+| `setup.bat --no-start` / `--skip-tests` / `--no-update` / `--reinstall` | set up only / skip the tests / skip the git and Hugging Face updates / rebuild the Python environment |
+
+Logs: `logs\api.log` and `logs\frontend.log`. Exit code is 0 when everything works, 1 otherwise.
+Environment variables: `SIMGUARD_PORT`, `SIMGUARD_UI_PORT`, `SIMGUARD_TORCH=cpu|cu132`, `SIMGUARD_VENV`.
+
+## Manual steps
+
 ```powershell
 # 1. one-time: install + train the scoring engine (~10 s)
 python -m pip install -r requirements.txt

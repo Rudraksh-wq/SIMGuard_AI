@@ -7,7 +7,12 @@ rem    setup.bat --no-start    set up only
 rem    setup.bat --skip-tests  do not run the test suite after (re)installing packages
 rem    setup.bat --reinstall   rebuild the Python environment from scratch
 rem    setup.bat --no-update   do not pull the latest code from GitHub / model from Hugging Face
+rem    setup.bat --restart     stop the running servers first, then start them again
+rem    setup.bat --stop        stop the servers and exit (also: stop.bat)
+rem    setup.bat --status      show whether the servers are running and exit
+rem    setup.bat --no-browser  do not open the browser;  --no-pause  never wait for a key at the end
 rem
+rem  The servers run in the background (no windows); their output is in the logs\ folder.
 rem  Safe to run any number of times: finished steps are skipped, so a normal start takes seconds.
 rem  Optional environment variables: SIMGUARD_TORCH=cpu|cu132  SIMGUARD_PORT=8000
 rem                                  SIMGUARD_VENV=<folder>     QWEN_PASSWORD=<used for a new .env>
@@ -34,13 +39,26 @@ set "SKIP_TESTS="
 set "REINSTALL="
 set "NO_UPDATE="
 set "NO_PULL="
+set "RESTART="
+set "STOP_ONLY="
+set "STATUS_ONLY="
+set "NO_BROWSER="
+set "NO_PAUSE="
 set "PASS_ARGS="
+rem started by double-click (cmd /c), not from an open terminal: keep the window open at the end
+set "DOUBLE_CLICK="
+echo %cmdcmdline% | find /i " /c " >nul && set "DOUBLE_CLICK=1"
 :parse_args
 if "%~1"=="" goto args_done
 if /i "%~1"=="--no-start" set "NO_START=1"
 if /i "%~1"=="--skip-tests" set "SKIP_TESTS=1"
 if /i "%~1"=="--reinstall" set "REINSTALL=1"
 if /i "%~1"=="--no-update" set "NO_UPDATE=1"
+if /i "%~1"=="--restart" set "RESTART=1"
+if /i "%~1"=="--stop" set "STOP_ONLY=1"
+if /i "%~1"=="--status" set "STATUS_ONLY=1"
+if /i "%~1"=="--no-browser" set "NO_BROWSER=1"
+if /i "%~1"=="--no-pause" set "NO_PAUSE=1"
 if /i "%~1"=="--no-pull" set "NO_PULL=1"
 if /i not "%~1"=="--no-pull" set "PASS_ARGS=%PASS_ARGS% %~1"
 shift
@@ -59,6 +77,15 @@ set "FRONTEND_URL=http://127.0.0.1:%UI_PORT%"
 set "STAMP=%VENV%\.simguard_deps"
 set "LAYA_DIR=%ROOT%finetune\fraud_v2\runs\20261113_171802_a1_6ep\final"
 set "PIP_DISABLE_PIP_VERSION_CHECK=1"
+
+if defined STOP_ONLY (
+    if exist "%PY%" ("%PY%" tools\setup_helpers.py servers stop) else (echo   nothing to stop: not set up yet)
+    goto end
+)
+if defined STATUS_ONLY (
+    if exist "%PY%" ("%PY%" tools\setup_helpers.py servers status) else (echo   not set up yet: run setup.bat)
+    goto end
+)
 
 echo.
 echo  SIMGuard AI setup
@@ -242,34 +269,40 @@ if defined NO_START goto end
 
 rem ---------------------------------------------------------------- start
 echo.
-echo  Starting the API on http://127.0.0.1:%PORT% ...
-"%PY%" -c "import requests,sys;requests.get('http://127.0.0.1:%PORT%/health',timeout=2);sys.exit(0)" >nul 2>&1
-if not errorlevel 1 (
-    echo   already running
-    goto api_ready
+echo  Starting SIMGuard AI
+set "SRV_FLAGS=--api-port %PORT% --ui-port %UI_PORT%"
+if defined RESTART set "SRV_FLAGS=%SRV_FLAGS% --restart"
+set "UI_URL="
+set "API_URL="
+rem the helper reuses servers that are already ours and current, replaces stale ones, picks free
+rem ports when 8000 / 8501 are taken, and prints the real addresses as KEY=value lines
+for /f "tokens=1,* delims==" %%a in ('""%PY%" tools\setup_helpers.py servers start %SRV_FLAGS%"') do (
+    if "%%a"=="UI_URL" set "UI_URL=%%b"
+    if "%%a"=="API_URL" set "API_URL=%%b"
 )
-start "SIMGuard AI API" "%PY%" -m uvicorn api.main:app --host 127.0.0.1 --port %PORT%
-"%PY%" tools\setup_helpers.py wait-health %PORT%
-if errorlevel 1 goto fail
-:api_ready
-"%PY%" tools\setup_helpers.py status %PORT%
+if not defined UI_URL (
+    echo.
+    echo  The servers did not start: see the messages above and the files in the logs folder.
+    goto fail
+)
 
 echo.
-echo  Starting the analyst frontend on http://127.0.0.1:%UI_PORT% ...
-"%PY%" -c "import requests,sys;requests.get('http://127.0.0.1:%UI_PORT%/_stcore/health',timeout=2);sys.exit(0)" >nul 2>&1
-if not errorlevel 1 (
-    echo   already running
-    goto ui_ready
+echo  Checking that everything works
+"%PY%" tools\setup_helpers.py servers verify
+if errorlevel 1 (
+    echo.
+    echo  A check failed: see the [FAIL] lines above. Details are in %ROOT%logs\api.log and frontend.log
+    goto fail
 )
-set "API_URL=http://127.0.0.1:%PORT%"
-start "SIMGuard AI frontend" /d "%ROOT%app" "%PY%" -m streamlit run app.py --server.address 127.0.0.1 --server.port %UI_PORT% --server.headless true
-"%PY%" tools\setup_helpers.py wait-url "http://127.0.0.1:%UI_PORT%/_stcore/health"
-if errorlevel 1 goto fail
-:ui_ready
-start "" "http://127.0.0.1:%UI_PORT%/"
+if not defined NO_BROWSER start "" "%UI_URL%"
 echo.
-echo  SIMGuard AI is open in your browser at http://127.0.0.1:%UI_PORT%
-echo  To stop it, close the "SIMGuard AI API" and "SIMGuard AI frontend" windows.
+echo  ==========================================================
+echo   SIMGuard AI is running:  %UI_URL%
+echo   API and docs:            %API_URL%/docs
+echo   Logs:                    %ROOT%logs\
+echo   Stop it:                 stop.bat   (or: setup.bat --stop)
+echo   Restart it:              setup.bat --restart
+echo  ==========================================================
 goto end
 
 rem ==========================================================================================
@@ -313,10 +346,23 @@ exit /b 1
 echo.
 echo  SETUP FAILED - see the messages above. Fix the problem and run setup.bat again.
 echo  If you are stuck, call Srijan.
+if not defined NO_PAUSE pause
 endlocal
-pause
 exit /b 1
 
 :end
+if defined DOUBLE_CLICK if not defined NO_PAUSE (
+    echo.
+    if defined STOP_ONLY (
+        echo  Press any key to close this window.
+    ) else if defined STATUS_ONLY (
+        echo  Press any key to close this window.
+    ) else if defined NO_START (
+        echo  Press any key to close this window.
+    ) else (
+        echo  Press any key to close this window. SIMGuard AI keeps running in the background.
+    )
+    pause >nul
+)
 endlocal
 exit /b 0
