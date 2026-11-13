@@ -9,4 +9,8 @@
 # Local editor settings
 .vscode/
 
+# Python caches and generated model artifacts
+__pycache__/
+/ml/artifacts/
+
 safe/
