@@ -6,6 +6,7 @@ rem    setup.bat               set up whatever is missing, then start the app an
 rem    setup.bat --no-start    set up only
 rem    setup.bat --skip-tests  do not run the test suite after (re)installing packages
 rem    setup.bat --reinstall   rebuild the Python environment from scratch
+rem    setup.bat --no-update   do not pull the latest code from GitHub / model from Hugging Face
 rem
 rem  Safe to run any number of times: finished steps are skipped, so a normal start takes seconds.
 rem  Optional environment variables: SIMGUARD_TORCH=cpu|cu132  SIMGUARD_PORT=8000
@@ -13,22 +14,39 @@ rem                                  SIMGUARD_VENV=<folder>     QWEN_PASSWORD=<u
 rem ==========================================================================================
 setlocal EnableExtensions
 title SIMGuard AI setup
-cd /d "%~dp0"
+
+rem `git pull` may replace this very file, and cmd reads a running batch file line by line.
+rem So the real work always runs from a temporary copy; the copy is never touched by git.
+if /i "%~1"=="--from-copy" goto running_from_copy
+del "%TEMP%\simguard_setup_*.bat" >nul 2>&1
+set "RUN_COPY=%TEMP%\simguard_setup_%RANDOM%%RANDOM%.bat"
+copy /y "%~f0" "%RUN_COPY%" >nul
+rem call and exit on ONE line: cmd must not read this file again after the copy returns
+call "%RUN_COPY%" --from-copy "%~dp0" %* & exit /b
+:running_from_copy
+set "ROOT=%~2"
+shift
+shift
+cd /d "%ROOT%"
 
 set "NO_START="
 set "SKIP_TESTS="
 set "REINSTALL="
+set "NO_UPDATE="
+set "PASS_ARGS="
 :parse_args
 if "%~1"=="" goto args_done
 if /i "%~1"=="--no-start" set "NO_START=1"
 if /i "%~1"=="--skip-tests" set "SKIP_TESTS=1"
 if /i "%~1"=="--reinstall" set "REINSTALL=1"
+if /i "%~1"=="--no-update" set "NO_UPDATE=1"
+if /i not "%~1"=="--no-update" set "PASS_ARGS=%PASS_ARGS% %~1"
 shift
 goto parse_args
 :args_done
 
 set "VENV=%SIMGUARD_VENV%"
-if not defined VENV set "VENV=%~dp0safe"
+if not defined VENV set "VENV=%ROOT%safe"
 set "PY=%VENV%\Scripts\python.exe"
 set "PORT=%SIMGUARD_PORT%"
 if not defined PORT set "PORT=8000"
@@ -37,12 +55,57 @@ if not defined UI_PORT set "UI_PORT=8501"
 rem the API uses FRONTEND_URL to know where the Streamlit app lives
 set "FRONTEND_URL=http://127.0.0.1:%UI_PORT%"
 set "STAMP=%VENV%\.simguard_deps"
-set "LAYA_DIR=%~dp0finetune\fraud_v2\runs\20261113_171802_a1_6ep\final"
+set "LAYA_DIR=%ROOT%finetune\fraud_v2\runs\20261113_171802_a1_6ep\final"
 set "PIP_DISABLE_PIP_VERSION_CHECK=1"
 
 echo.
 echo  SIMGuard AI setup
 echo  =================
+
+rem ---------------------------------------------------------------- 0. latest code
+echo.
+echo [0/7] Latest code from GitHub
+if defined NO_UPDATE (
+    echo   skipped with --no-update
+    goto code_ready
+)
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo   git not found - using the code as it is
+    goto code_ready
+)
+if not exist "%ROOT%.git" (
+    echo   not a git clone - using the code as it is
+    goto code_ready
+)
+rem only pull when no tracked file has local edits, so nobody's work is ever overwritten
+set "DIRTY="
+for /f "delims=" %%s in ('git status --porcelain --untracked-files=no') do set "DIRTY=1"
+if defined DIRTY (
+    echo   you have local changes - not pulling. Commit or discard them to get updates.
+    goto code_ready
+)
+set "OLD_HEAD="
+for /f "delims=" %%h in ('git rev-parse HEAD') do set "OLD_HEAD=%%h"
+git pull --ff-only --quiet
+if errorlevel 1 (
+    echo   could not update - offline, or your branch has commits GitHub does not have.
+    echo   Continuing with the current code.
+    goto code_ready
+)
+set "NEW_HEAD="
+for /f "delims=" %%h in ('git rev-parse HEAD') do set "NEW_HEAD=%%h"
+if "%OLD_HEAD%"=="%NEW_HEAD%" (
+    echo   already up to date
+    goto code_ready
+)
+echo   updated to the latest version
+git diff --quiet %OLD_HEAD% %NEW_HEAD% -- setup.bat
+if errorlevel 1 (
+    echo   setup.bat itself changed - restarting with the new version
+    call "%ROOT%setup.bat" --no-update %PASS_ARGS% & exit /b
+)
+:code_ready
 
 rem ---------------------------------------------------------------- 1. Python environment
 echo.
@@ -139,7 +202,9 @@ rem ---------------------------------------------------------------- 6. Laya mod
 echo.
 echo [6/7] Fine-tuned Laya model
 rem downloaded from https://huggingface.co/Kyoiske/simguard-laya-fraud when missing
-"%PY%" tools\setup_helpers.py laya-ensure "%LAYA_DIR%"
+set "LAYA_FLAGS="
+if defined NO_UPDATE set "LAYA_FLAGS=--no-update"
+"%PY%" tools\setup_helpers.py laya-ensure "%LAYA_DIR%" %LAYA_FLAGS%
 
 rem ---------------------------------------------------------------- 7. self-test
 echo.
@@ -186,7 +251,7 @@ if not errorlevel 1 (
     goto ui_ready
 )
 set "API_URL=http://127.0.0.1:%PORT%"
-start "SIMGuard AI frontend" /d "%~dp0app" "%PY%" -m streamlit run app.py --server.address 127.0.0.1 --server.port %UI_PORT% --server.headless true
+start "SIMGuard AI frontend" /d "%ROOT%app" "%PY%" -m streamlit run app.py --server.address 127.0.0.1 --server.port %UI_PORT% --server.headless true
 "%PY%" tools\setup_helpers.py wait-url "http://127.0.0.1:%UI_PORT%/_stcore/health"
 if errorlevel 1 goto fail
 :ui_ready

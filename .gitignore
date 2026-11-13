@@ -27,3 +27,6 @@ __pycache__/
 # local secrets
 .env
 .qwen_endpoint.json
+
+# runtime case database (setup.bat points DB_PATH here)
+/data/

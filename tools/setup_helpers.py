@@ -1,7 +1,7 @@
 """Small helpers for setup.bat (kept in Python so the batch file stays simple and robust).
 
     python tools/setup_helpers.py deps-hash          print a hash of requirements + constraints
-    python tools/setup_helpers.py laya-ensure DIR      download the fine-tuned Laya model into DIR if missing
+    python tools/setup_helpers.py laya-ensure DIR      download the Laya model into DIR if missing or changed (--no-update: skip check)
     python tools/setup_helpers.py torch-info        print the installed torch build and device
     python tools/setup_helpers.py ensure-env         create .env from .env.example if missing
     python tools/setup_helpers.py wait-health PORT   wait until the API answers (max 120 s)
@@ -100,24 +100,89 @@ LAYA_FILES = ("model.safetensors", "gate.json", "questions.json", "rl_agent_conf
               "encoder/config.json", "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json")
 
 
-def laya_ensure(folder: str) -> None:
-    """Make sure the fine-tuned Laya model is in `folder`; download it from the Hub if not."""
+MODEL_STATE = ".simguard_model_state.json"  # cached local hashes, keyed by size + mtime
+
+
+def _local_digest(file: Path, lfs: bool, cache: dict) -> str:
+    """sha256 for LFS files, git blob sha1 for small files (what the Hub reports)."""
+    stat = file.stat()
+    key = f"{file.name}|{stat.st_size}|{stat.st_mtime_ns}|{lfs}"
+    if key in cache:
+        return cache[key]
+    if lfs:
+        digest = hashlib.sha256()
+        with file.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 24), b""):
+                digest.update(chunk)
+    else:
+        data = file.read_bytes()
+        digest = hashlib.sha1(b"blob %d\0" % len(data) + data)
+    cache[key] = digest.hexdigest()
+    return cache[key]
+
+
+def laya_ensure(folder: str, update: bool = True) -> None:
+    """Make sure the fine-tuned Laya model in `folder` is present and matches the Hub version.
+
+    Downloads only missing or changed files. Offline, an existing local copy is kept as is.
+    """
+    import json as _json
+
     path = Path(folder)
     missing = [name for name in LAYA_FILES if not (path / name).is_file()]
-    if not missing:
-        print(f"  found at {path}")
+    if not missing and not update:
+        print(f"  found at {path} (update check skipped)")
         return
-    print(f"  downloading {LAYA_REPO} from Hugging Face - about 850 MB, please wait")
     try:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import HfApi, hf_hub_download
 
-        snapshot_download(repo_id=LAYA_REPO, local_dir=str(path), allow_patterns=list(LAYA_FILES) + ["export_report.json"])
+        info = HfApi().model_info(LAYA_REPO, files_metadata=True)
     except Exception as error:
-        print(f"  download failed: {type(error).__name__}: {error}")
-        print("  The app still runs with LightGBM + Isolation Forest; run setup.bat again to retry.")
+        if not missing:
+            print(f"  found at {path} (could not reach Hugging Face to check for updates)")
+        else:
+            print(f"  cannot download the model: {type(error).__name__}: {error}")
+            print("  The app still runs with LightGBM + Isolation Forest; run setup.bat again to retry.")
         return
-    still = [name for name in LAYA_FILES if not (path / name).is_file()]
-    print("  downloaded" if not still else f"  still missing: {', '.join(still)}")
+
+    state_file = path / MODEL_STATE
+    try:
+        cache = _json.loads(state_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    remote = {s.rfilename: s for s in info.siblings}
+    stale = []
+    for name in list(LAYA_FILES) + ["export_report.json"]:
+        sibling = remote.get(name)
+        if sibling is None:
+            continue
+        local = path / name
+        if not local.is_file():
+            stale.append(name)
+            continue
+        lfs = getattr(sibling, "lfs", None)
+        want = (lfs.sha256 if lfs else sibling.blob_id) if (lfs or sibling.blob_id) else None
+        if want and _local_digest(local, bool(lfs), cache) != want:
+            stale.append(name)
+
+    if not stale:
+        print(f"  found at {path} - same as the Hugging Face version")
+    else:
+        size = sum((remote[n].size or 0) for n in stale) / 1e6
+        verb = "downloading" if missing else "updating"
+        print(f"  {verb} {len(stale)} file(s) from {LAYA_REPO} - {size:.0f} MB, please wait")
+        try:
+            for name in stale:
+                hf_hub_download(LAYA_REPO, name, local_dir=str(path), revision=info.sha)
+        except Exception as error:
+            print(f"  download failed: {type(error).__name__}: {error}")
+            print("  The app still runs with LightGBM + Isolation Forest; run setup.bat again to retry.")
+            return
+        print(f"  model is now at Hugging Face revision {info.sha[:10]}")
+    try:
+        state_file.write_text(_json.dumps(cache), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def py_version() -> None:
@@ -135,7 +200,7 @@ def main() -> None:
     if command == "deps-hash":
         deps_hash()
     elif command == "laya-ensure":
-        laya_ensure(sys.argv[2])
+        laya_ensure(sys.argv[2], update="--no-update" not in sys.argv[3:])
     elif command == "py-version":
         py_version()
     elif command == "torch-info":
