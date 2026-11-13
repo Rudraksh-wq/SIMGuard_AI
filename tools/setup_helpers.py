@@ -23,7 +23,8 @@ DISCOVERY_TOPIC = "ntfy:simguard-2511bfdb6ca0500b"
 def deps_hash() -> None:
     digest = hashlib.sha256()
     for name in ("requirements.txt", "constraints.txt"):
-        digest.update((ROOT / name).read_bytes())
+        # normalise line endings: git may check these out with CRLF on Windows
+        digest.update((ROOT / name).read_bytes().replace(b"\r\n", b"\n"))
     digest.update(sys.version.encode())
     print(digest.hexdigest())
 

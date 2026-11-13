@@ -33,6 +33,7 @@ set "NO_START="
 set "SKIP_TESTS="
 set "REINSTALL="
 set "NO_UPDATE="
+set "NO_PULL="
 set "PASS_ARGS="
 :parse_args
 if "%~1"=="" goto args_done
@@ -40,7 +41,8 @@ if /i "%~1"=="--no-start" set "NO_START=1"
 if /i "%~1"=="--skip-tests" set "SKIP_TESTS=1"
 if /i "%~1"=="--reinstall" set "REINSTALL=1"
 if /i "%~1"=="--no-update" set "NO_UPDATE=1"
-if /i not "%~1"=="--no-update" set "PASS_ARGS=%PASS_ARGS% %~1"
+if /i "%~1"=="--no-pull" set "NO_PULL=1"
+if /i not "%~1"=="--no-pull" set "PASS_ARGS=%PASS_ARGS% %~1"
 shift
 goto parse_args
 :args_done
@@ -67,6 +69,10 @@ echo.
 echo [0/7] Latest code from GitHub
 if defined NO_UPDATE (
     echo   skipped with --no-update
+    goto code_ready
+)
+if defined NO_PULL (
+    echo   just updated
     goto code_ready
 )
 git --version >nul 2>&1
@@ -103,7 +109,7 @@ echo   updated to the latest version
 git diff --quiet %OLD_HEAD% %NEW_HEAD% -- setup.bat
 if errorlevel 1 (
     echo   setup.bat itself changed - restarting with the new version
-    call "%ROOT%setup.bat" --no-update %PASS_ARGS% & exit /b
+    call "%ROOT%setup.bat" --no-pull %PASS_ARGS% & exit /b
 )
 :code_ready
 
