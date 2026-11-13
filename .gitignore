@@ -6,3 +6,13 @@
 /Scripts/
 /pyvenv.cfg
 safe/
+/safe/*
+# training artifacts too large for git (logs/configs/reports under runs/ are kept)
+finetune/fraud_v2/runs/**/ckpt*/
+finetune/fraud_v2/runs/**/checkpoints/
+finetune/fraud_v2/runs/**/final/
+finetune/fraud_v2/final/
+*.onnx
+*.pt
+*.safetensors
+*.bin
