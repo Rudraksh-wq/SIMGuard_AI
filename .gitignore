@@ -16,3 +16,10 @@ finetune/fraud_v2/final/
 *.pt
 *.safetensors
 *.bin
+
+# Local editor settings
+.vscode/
+
+# Python caches and generated model artifacts
+__pycache__/
+/ml/artifacts/
