@@ -45,6 +45,7 @@ MAX_PAYLOAD_CHARS = 16000  # notebook limit
 MODEL_ID = "Qwen/Qwen3.5-2B"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DISCOVERY_CACHE_S = 60.0
+PING_CACHE_S = 10.0
 NTFY_BASE = "https://ntfy.sh"
 
 
@@ -82,6 +83,7 @@ def valid_url(url: str) -> bool:
 _state_lock = threading.Lock()
 _active_endpoint: str | None = None
 _discovered: tuple[float, str | None] = (0.0, None)
+_ping_cache: tuple[float, dict[str, Any]] = (0.0, {})
 
 
 def _state_file() -> Path:
@@ -97,7 +99,7 @@ def get_override() -> dict[str, Any]:
 
 def set_override(url: str | None) -> None:
     """Save (or clear, with None/"") the link pasted in the frontend."""
-    global _active_endpoint
+    global _active_endpoint, _ping_cache
     url = _clean_url(url)
     path = _state_file()
     with _state_lock:
@@ -109,21 +111,30 @@ def set_override(url: str | None) -> None:
             saved = {"endpoint": url, "saved_at": datetime.now(timezone.utc).isoformat()}
             path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
         _active_endpoint = url or None
+        _ping_cache = (0.0, {})
 
 
 def reset_state() -> None:
     """Forget the remembered and discovered links (tests, config changes)."""
-    global _active_endpoint, _discovered
+    global _active_endpoint, _discovered, _ping_cache
     _active_endpoint = None
     _discovered = (0.0, None)
+    _ping_cache = (0.0, {})
+    _credentials.update(user=None, password=None)
 
 
-def discover(config: QwenConfig, force: bool = False) -> str | None:
-    """Latest link the notebook published: `ntfy:<topic>`, or a URL whose body is the link."""
+def discover(config: QwenConfig, force: bool = False, fresh_since: float | None = None) -> str | None:
+    """Latest link the notebook published: `ntfy:<topic>`, or a URL whose body is the link.
+
+    fresh_since: a lookup made at or after this monotonic time is reused even when force is set
+    (so one operation never asks the discovery service twice).
+    """
     global _discovered
     if not config.discovery:
         return None
     cached_at, cached = _discovered
+    if cached_at and fresh_since is not None and cached_at >= fresh_since:
+        return cached  # already looked up during this very operation
     if not force and cached_at and time.monotonic() - cached_at < DISCOVERY_CACHE_S:
         return cached
     found = None
@@ -139,10 +150,14 @@ def discover(config: QwenConfig, force: bool = False) -> str | None:
                     item = json.loads(line)
                 except ValueError:
                     continue
-                candidate = _clean_url(item.get("message", ""))
+                message = _clean_url(item.get("message", ""))
                 stamp = (int(item.get("time") or 0), index)  # 1 s resolution: ties -> later line
-                if valid_url(candidate) and stamp > newest:
-                    newest, found = stamp, candidate
+                if stamp <= newest:
+                    continue
+                if valid_url(message):
+                    newest, found = stamp, message
+                elif message.lower() == "offline":  # the notebook shut itself down
+                    newest, found = stamp, None
         else:
             lines = requests.get(config.discovery, timeout=8).text.strip().splitlines()
             candidate = _clean_url(lines[0] if lines else "")
@@ -153,11 +168,11 @@ def discover(config: QwenConfig, force: bool = False) -> str | None:
     return found
 
 
-def candidate_endpoints(config: QwenConfig, refresh: bool = False) -> list[str]:
+def candidate_endpoints(config: QwenConfig, refresh: bool = False, fresh_since: float | None = None) -> list[str]:
     ordered = [
         _active_endpoint,
         get_override().get("endpoint"),
-        discover(config, force=refresh),
+        discover(config, force=refresh, fresh_since=fresh_since),
         config.endpoint,
     ]
     unique: list[str] = []
@@ -168,12 +183,30 @@ def candidate_endpoints(config: QwenConfig, refresh: bool = False) -> list[str]:
     return unique
 
 
+_credentials: dict[str, str | None] = {"user": None, "password": None}
+
+
+def set_credentials(user: str | None, password: str | None) -> None:
+    """Username / password entered in the frontend. Kept in memory only (never written to disk);
+    the browser keeps its own copy and sends it again on its next visit."""
+    _credentials["user"] = (user or "").strip() or None
+    _credentials["password"] = password or None
+    global _ping_cache
+    _ping_cache = (0.0, {})
+    with _session_lock:
+        _sessions.clear()  # log in again with the new credentials
+
+
+def credentials_source() -> str:
+    return "frontend" if _credentials["password"] else "env"
+
+
 def get_config() -> QwenConfig:
     load_dotenv()
     return QwenConfig(
         endpoint=_clean_url(os.getenv("QWEN_ENDPOINT", "")),
-        user=os.getenv("QWEN_USER", "simguard"),
-        password=os.getenv("QWEN_PASSWORD", ""),
+        user=_credentials["user"] or os.getenv("QWEN_USER", "simguard"),
+        password=_credentials["password"] or os.getenv("QWEN_PASSWORD", ""),
         timeout_s=float(os.getenv("QWEN_TIMEOUT_S", "90")),
         discovery=os.getenv("QWEN_DISCOVERY", "").strip(),
     )
@@ -271,8 +304,9 @@ def call_service(payload: dict[str, Any], config: QwenConfig | None = None) -> d
 
     tried: list[str] = []
     dead: list[str] = []
+    began = time.monotonic()
     for refresh in (False, True):  # second pass asks the discovery topic for a fresh link
-        for endpoint in candidate_endpoints(config, refresh=refresh):
+        for endpoint in candidate_endpoints(config, refresh=refresh, fresh_since=began):
             if endpoint in tried:
                 continue
             tried.append(endpoint)
@@ -300,8 +334,24 @@ def _ping_one(endpoint: str, config: QwenConfig) -> tuple[bool, str]:
         return False, f"{type(error).__name__}: {error}"
 
 
-def ping(config: QwenConfig | None = None, endpoint: str | None = None) -> dict[str, Any]:
-    """Check one given link, or find (and remember) the first working known link."""
+def ping(config: QwenConfig | None = None, endpoint: str | None = None, cached: bool = False) -> dict[str, Any]:
+    """Check one given link, or find (and remember) the first working known link.
+
+    cached=True reuses a result younger than PING_CACHE_S (for /health and the UI status panel,
+    which poll often; an offline Qwen otherwise makes every poll cost several seconds).
+    """
+    global _active_endpoint, _ping_cache
+    if cached and not endpoint:
+        at, result = _ping_cache
+        if result and time.monotonic() - at < PING_CACHE_S:
+            return result
+    result = _ping_uncached(config, endpoint)
+    if not endpoint:
+        _ping_cache = (time.monotonic(), result)
+    return result
+
+
+def _ping_uncached(config: QwenConfig | None, endpoint: str | None) -> dict[str, Any]:
     global _active_endpoint
     config = config or get_config()
     if endpoint:
@@ -310,8 +360,9 @@ def ping(config: QwenConfig | None = None, endpoint: str | None = None) -> dict[
         return {"configured": True, "reachable": ok, "endpoint": url, "detail": detail}
     tried: list[str] = []
     details: list[str] = []
+    began = time.monotonic()
     for refresh in (False, True):
-        for url in candidate_endpoints(config, refresh=refresh):
+        for url in candidate_endpoints(config, refresh=refresh, fresh_since=began):
             if url in tried:
                 continue
             tried.append(url)
@@ -339,6 +390,7 @@ def endpoint_status(config: QwenConfig | None = None) -> dict[str, Any]:
         "env_endpoint": config.endpoint or None,
         "user": config.user,
         "password_set": bool(config.password),
+        "credentials_from": credentials_source(),
     }
 
 
