@@ -30,3 +30,6 @@ __pycache__/
 
 # runtime case database (setup.bat points DB_PATH here)
 /data/
+
+# server logs written by setup.bat
+/logs/

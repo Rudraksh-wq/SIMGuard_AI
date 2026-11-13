@@ -7,6 +7,7 @@
     python tools/setup_helpers.py wait-health PORT   wait until the API answers (max 120 s)
     python tools/setup_helpers.py wait-url URL       wait until URL answers 200 (max 120 s)
     python tools/setup_helpers.py status PORT       print a one-screen status of the running app
+    python tools/setup_helpers.py servers start|verify|stop|status   manage the API + frontend (tools/servers.py)
 """
 from __future__ import annotations
 
@@ -218,6 +219,10 @@ def main() -> None:
         wait_url(sys.argv[2])
     elif command == "status":
         status(sys.argv[2])
+    elif command == "servers":
+        import servers
+
+        sys.exit(servers.main(sys.argv[2:]))
     else:
         print(__doc__)
         sys.exit(2)
