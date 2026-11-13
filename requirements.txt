@@ -1,0 +1,25 @@
+# SIMGuard AI
+# Install: python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+
+# API + backend
+fastapi
+uvicorn[standard]
+pydantic>=2
+python-dotenv
+requests
+
+# Data + ML scoring engine
+pandas
+numpy
+scikit-learn
+lightgbm
+joblib
+
+# Laya decision model (provides laya.load and the laya-train CLI)
+laya
+
+# Dashboard
+streamlit
+
+# Tests
+pytest
