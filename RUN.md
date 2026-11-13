@@ -1,46 +1,30 @@
 # Running SIMGuard AI
 
-## One command (Windows)
-
-Double-click `setup.bat`, or run it from a terminal in the project folder:
-
-```bat
-setup.bat
-```
-
-It sets up whatever is missing, then starts the app and opens http://127.0.0.1:8000:
-
-1. Python: reuses `safe\` if it works; otherwise creates it with Python 3.15 / 3.12 / 3.13, or
-   installs Python 3.12 through uv when the machine has none (no admin rights needed).
-2. PyTorch 2.15.0: the CUDA build when an NVIDIA GPU is present, otherwise the CPU build.
-3. Packages from `requirements.txt`, pinned by `constraints.txt` (skipped when unchanged).
-4. `.env`: created from `.env.example` if missing (asks once for the Qwen password; Enter skips).
-5. LightGBM + Isolation Forest: trained if `mlrtifacts` is missing (~10 s).
-6. Laya: checks the fine-tuned model folder (not in git, too large; copy it from the training
-   machine to `finetuneraud_v2uns61113_171802_a1_6epinal`). Without it the app runs
-   on LightGBM + Isolation Forest only.
-7. Tests: run after packages were (re)installed.
-
-Later runs skip finished steps and start in seconds. Options: `--no-start`, `--skip-tests`,
-`--reinstall`; environment variables `SIMGUARD_TORCH=cpu|cu132`, `SIMGUARD_PORT`, `QWEN_PASSWORD`.
-Close the "SIMGuard AI server" window to stop the app.
-
-## Manual steps
-
 ```powershell
 # 1. one-time: install + train the scoring engine (~10 s)
-safe\Scripts\python.exe -m pip install -r requirements.txt
-safe\Scripts\python.exe -m ml.train
+python -m pip install -r requirements.txt
+python -m ml.train
 
 # 2. start the Qwen 3.5 2B service: Kaggle notebook rudraksh12/qwen3-5, GPU T4 on.
 #    Its last cell should be kaggle/qwen_service_launch_cell.py (see "Qwen link" below).
 copy .env.example .env   # then set QWEN_PASSWORD and QWEN_ENDPOINT or QWEN_DISCOVERY
 
-# 3. start the API + frontend
-safe\Scripts\python.exe -m uvicorn api.main:app --port 8000
-# open http://127.0.0.1:8000   (demo deep link: http://127.0.0.1:8000/#sample=fraud)
+# 3. start the API (from SIMGuard_AI)
+# Set FRONTEND_URL too if Streamlit must use a port other than 8501.
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
+- In a second terminal opened in `SIMGuard_AI`, switch to `app` and start the Streamlit frontend:
+
+```powershell
+Set-Location .\app
+$env:API_URL = "http://127.0.0.1:8000"
+python -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501
+# open http://127.0.0.1:8501
+```
+
+- If port 8501 is occupied, choose a free Streamlit port and set `FRONTEND_URL` in the API terminal to match.
+- The FastAPI root now identifies the API; use `/docs` for the API reference.
 - Without Qwen configured everything still works; reports fall back to the template.
 - `MOCK_MODELS=1` runs the API without LightGBM/Laya (for UI work).
 - Endpoints: `POST /analyze` (one event JSON), `POST /analyze/input` ({content, kind}),

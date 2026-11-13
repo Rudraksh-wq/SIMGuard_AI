@@ -18,8 +18,9 @@ joblib
 # Laya decision model (provides laya.load and the laya-train CLI)
 laya
 
-# Web frontend is plain HTML/JS in frontend/, served by FastAPI (no build step)
+# Upload parsing and Streamlit analyst frontend
 python-multipart
+streamlit
 
 # Tests
 pytest
