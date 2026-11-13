@@ -1,0 +1,10 @@
+{
+  "onnx": "D:\\safe\\finetune\\fraud_v2\\runs\\20261113_171802_a1_6ep\\final\\laya_fraud.onnx",
+  "cases": 600,
+  "decision_agreement": 1.0,
+  "max_abs_prob_diff": 0.0001000000000000445,
+  "mean_abs_prob_diff": 1.4999999999999966e-06,
+  "ms_per_case_pytorch_cpu": 509.97475650000223,
+  "ms_per_case_onnx_cpu": 379.85893066666904,
+  "verified_with": "python3.12 + torch 2.15 cpu + onnxruntime 1.32"
+}
