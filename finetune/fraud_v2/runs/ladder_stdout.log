@@ -1,0 +1,31 @@
+
+=== attempt a1_no_bias ===
+[16:47:04] device cuda (NVIDIA GeForce RTX 3050 6GB Laptop GPU, 6.0 GB)
+[16:47:48] bias: none | sizes {'train_items': 22000, 'calib_items': 2000, 'val': 3000, 'test': 6000, 'hard_dev': 300, 'hard_test': 600}
+[16:47:48] params total 421.3M, trainable 198.1M
+[16:47:48] baseline evaluation ...
+[16:49:23]   base val       acc 0.2517  loss 1.7350  bal_acc 0.5000
+[16:53:10]   base test      acc 0.2565  loss 1.7325  bal_acc 0.4999
+[16:53:22]   base hard_dev  acc 0.5533  loss 1.0221  bal_acc 0.5000
+[16:53:45]   base hard_test acc 0.5500  loss 1.0378  bal_acc 0.5000
+[16:55:03]   base val       gate: block 0 allow 0 noul 3000 | fraud_leak 0 false_block 0
+[16:55:03]   base test      gate: block 7 allow 2 noul 5991 | fraud_leak 2 false_block 2
+[16:55:03]   base hard_dev  gate: block 0 allow 0 noul 300 | fraud_leak 0 false_block 0
+[16:55:03]   base hard_test gate: block 0 allow 0 noul 600 | fraud_leak 0 false_block 0
+[16:55:14]   base speed {'single_p50_ms': 40.89295000085258, 'single_p95_ms': 46.057139998811174, 'batched_ms_per_item': 14.855130078125, 'n_single': 100}
+[16:55:15] optimizer budget: 22000 train item(s), effective batch up to 32 (micro_batch 4 x grad_accum 8), 11008 optimizer updates over 16 epoch(s)
+epoch 1/16 step 200 loss 0.5611
+epoch 1/16 step 400 loss 0.0018
+epoch 1/16 step 600 loss 0.0879
+epoch 1/16 step 800 loss 0.1464
+epoch 1/16 step 1000 loss 0.0027
+epoch 1/16 step 1200 loss 0.0032
+epoch 1/16 step 1400 loss 0.7275
+epoch 1/16 step 1600 loss 0.0071
+epoch 1/16 step 1800 loss 0.0013
+epoch 1/16 step 2000 loss 0.0225
+epoch 1/16 step 2200 loss 0.0110
+epoch 1/16 step 2400 loss 0.0037
+epoch 1/16 step 2600 loss 0.1404
+epoch 1/16 step 2800 loss 0.0000
+epoch 1/16 step 3000 loss 0.0007
