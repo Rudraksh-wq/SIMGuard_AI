@@ -1,0 +1,27 @@
+[17:18:02] device cuda (NVIDIA GeForce RTX 3050 6GB Laptop GPU, 6.0 GB)
+[17:18:16] bias: none | sizes {'train_items': 22000, 'calib_items': 2000, 'val': 3000, 'test': 6000, 'hard_dev': 300, 'hard_test': 600}
+[17:18:16] params total 421.3M, trainable 198.1M
+[17:18:16] baseline evaluation ...
+[17:19:53]   base val       acc 0.2517  loss 1.7350  bal_acc 0.5000
+[17:23:12]   base test      acc 0.2565  loss 1.7325  bal_acc 0.4999
+[17:23:21]   base hard_dev  acc 0.5533  loss 1.0221  bal_acc 0.5000
+[17:23:41]   base hard_test acc 0.5500  loss 1.0378  bal_acc 0.5000
+[17:24:47]   base val       gate: block 0 allow 0 noul 3000 | fraud_leak 0 false_block 0
+[17:24:47]   base test      gate: block 7 allow 2 noul 5991 | fraud_leak 2 false_block 2
+[17:24:47]   base hard_dev  gate: block 0 allow 0 noul 300 | fraud_leak 0 false_block 0
+[17:24:47]   base hard_test gate: block 0 allow 0 noul 600 | fraud_leak 0 false_block 0
+[17:24:57]   base speed {'single_p50_ms': 38.574800000787945, 'single_p95_ms': 41.141690000586095, 'batched_ms_per_item': 12.999143749993891, 'n_single': 100}
+[17:24:58] optimizer budget: 22000 train item(s), effective batch up to 32 (micro_batch 4 x grad_accum 8), 4128 optimizer updates over 6 epoch(s)
+[17:53:10] epoch 01 train 0.1521 | val loss 0.0633 acc 0.9763 | hard_dev acc 0.6333 | attnH 0.4859 cos 0.467 drift 0.0021  | continue
+[18:20:46] epoch 02 train 0.0624 | val loss 0.1435 acc 0.9650 | hard_dev acc 0.7400 | attnH 0.4884 cos 0.445 drift 0.0026  | continue
+[18:55:05] epoch 03 train 0.0467 | val loss 0.0497 acc 0.9857 | hard_dev acc 0.7200 | attnH 0.4886 cos 0.455 drift 0.0029  | continue
+[18:55:05]   pruned epoch_01
+[19:28:11] epoch 04 train 0.0317 | val loss 0.0592 acc 0.9847 | hard_dev acc 0.7367 | attnH 0.4878 cos 0.438 drift 0.0030  | continue
+[19:28:11]   pruned epoch_02
+[20:02:12] epoch 05 train 0.0214 | val loss 0.0252 acc 0.9937 | hard_dev acc 0.8367 | attnH 0.4849 cos 0.437 drift 0.0031  | continue
+[20:02:12]   pruned epoch_03
+[20:34:49] epoch 06 train 0.0152 | val loss 0.0272 acc 0.9933 | hard_dev acc 0.8567 | attnH 0.4847 cos 0.441 drift 0.0031  | continue
+[20:34:49]   pruned epoch_04
+[20:34:49] reached max epochs (6) | selected epoch 5
+[20:35:59] gate fitted on 2000 held-out calibration rows: ALLOW if p<=0.11971, BLOCK if p>=0.88277, else NOUL (asymmetric budgets: fraud leak 0.0020 vs false block 0.0100)
+[20:41:40] FINAL  val acc 0.9937 loss 0.0201 | test acc 0.9917 | hard_dev 0.8367 | hard_test 0.8333 (100 strict misses, 48 confidently wrong, 131 to human) | speed 38.6 -> 39.1

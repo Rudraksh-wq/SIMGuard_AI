@@ -1,0 +1,75 @@
+[20:42:41] device cuda (NVIDIA GeForce RTX 3050 6GB Laptop GPU, 6.0 GB)
+[20:42:58] bias: none | sizes {'train_items': 22000, 'calib_items': 2000, 'val': 3000, 'test': 6000, 'hard_dev': 300, 'hard_test': 600}
+[20:42:58] params total 421.3M, trainable 198.1M
+[20:42:58] baseline evaluation ...
+[20:44:34]   base val       acc 0.9937  loss 0.0201  bal_acc 0.9918
+[20:47:53]   base test      acc 0.9917  loss 0.0251  bal_acc 0.9884
+[20:48:02]   base hard_dev  acc 0.8367  loss 0.4575  bal_acc 0.8359
+[20:48:22]   base hard_test acc 0.8333  loss 0.4304  bal_acc 0.8330
+[20:49:28]   base val       gate: block 2229 allow 740 noul 31 | fraud_leak 5 false_block 5
+[20:49:28]   base test      gate: block 4431 allow 1487 noul 82 | fraud_leak 11 false_block 13
+[20:49:28]   base hard_dev  gate: block 111 allow 131 noul 58 | fraud_leak 13 false_block 14
+[20:49:28]   base hard_test gate: block 216 allow 253 noul 131 | fraud_leak 21 false_block 27
+[20:49:39]   base speed {'single_p50_ms': 39.033450000715675, 'single_p95_ms': 52.922305000174674, 'batched_ms_per_item': 12.943612499995538, 'n_single': 100}
+[20:49:40] optimizer budget: 22000 train item(s), effective batch up to 32 (micro_batch 4 x grad_accum 8), 1376 optimizer updates over 2 epoch(s)
+epoch 1/2 step 200 loss 0.5547
+epoch 1/2 step 400 loss 0.0000
+epoch 1/2 step 600 loss 0.0005
+epoch 1/2 step 800 loss 0.0084
+epoch 1/2 step 1000 loss 0.0000
+epoch 1/2 step 1200 loss 0.0002
+epoch 1/2 step 1400 loss 0.0012
+epoch 1/2 step 1600 loss 0.0001
+epoch 1/2 step 1800 loss 0.0000
+epoch 1/2 step 2000 loss 0.0000
+epoch 1/2 step 2200 loss 0.2848
+epoch 1/2 step 2400 loss 0.0000
+epoch 1/2 step 2600 loss 0.0071
+epoch 1/2 step 2800 loss -0.0000
+epoch 1/2 step 3000 loss 0.0000
+epoch 1/2 step 3200 loss 0.0000
+epoch 1/2 step 3400 loss 0.0276
+epoch 1/2 step 3600 loss 0.0652
+epoch 1/2 step 3800 loss 0.0000
+epoch 1/2 step 4000 loss 0.0008
+epoch 1/2 step 4200 loss 0.0004
+epoch 1/2 step 4400 loss 0.0000
+epoch 1/2 step 4600 loss 0.0009
+epoch 1/2 step 4800 loss 0.0000
+epoch 1/2 step 5000 loss 0.0000
+epoch 1/2 step 5200 loss 0.0007
+epoch 1/2 step 5400 loss 0.0000
+epoch 1/2 mean loss 0.0389
+[21:17:22] epoch 01 train 0.0389 | val loss 0.0290 acc 0.9910 | hard_dev acc 0.8033 | attnH 0.4871 cos 0.422 drift 0.0015  | continue
+epoch 2/2 step 200 loss 0.0154
+epoch 2/2 step 400 loss 0.0000
+epoch 2/2 step 600 loss 0.0628
+epoch 2/2 step 800 loss -0.0000
+epoch 2/2 step 1000 loss -0.0000
+epoch 2/2 step 1200 loss -0.0000
+epoch 2/2 step 1400 loss -0.0000
+epoch 2/2 step 1600 loss 0.0182
+epoch 2/2 step 1800 loss 0.0000
+epoch 2/2 step 2000 loss -0.0000
+epoch 2/2 step 2200 loss 0.0005
+epoch 2/2 step 2400 loss -0.0000
+epoch 2/2 step 2600 loss -0.0000
+epoch 2/2 step 2800 loss -0.0000
+epoch 2/2 step 3000 loss 0.0001
+epoch 2/2 step 3200 loss 0.0000
+epoch 2/2 step 3400 loss 0.0000
+epoch 2/2 step 3600 loss 0.0004
+epoch 2/2 step 3800 loss -0.0000
+epoch 2/2 step 4000 loss 0.0001
+epoch 2/2 step 4200 loss 0.0002
+epoch 2/2 step 4400 loss 0.0000
+epoch 2/2 step 4600 loss 0.0000
+epoch 2/2 step 4800 loss -0.0000
+epoch 2/2 step 5000 loss -0.0000
+epoch 2/2 step 5200 loss -0.0000
+epoch 2/2 step 5400 loss -0.0000
+epoch 2/2 mean loss 0.0165
+[21:45:00] epoch 02 train 0.0165 | val loss 0.0317 acc 0.9920 | hard_dev acc 0.8133 | attnH 0.4868 cos 0.410 drift 0.0015  | continue
+[21:45:00] reached max epochs (2) | selected epoch 1
+[21:46:06] gate fitted on 2000 held-out calibration rows: ALLOW if p<=0.11938, BLOCK if p>=0.60268, else NOUL (asymmetric budgets: fraud leak 0.0020 vs false block 0.0100)
+[21:51:38] FINAL  val acc 0.9910 loss 0.0253 | test acc 0.9890 | hard_dev 0.8033 | hard_test 0.7983 (121 strict misses, 64 confidently wrong, 160 to human) | speed 39.0 -> 38.4
