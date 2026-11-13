@@ -2,12 +2,9 @@ import os
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from agents import qwen_agent
@@ -17,7 +14,6 @@ from api import db, mocks
 from api.input_parser import InputError, parse_input
 from api.pipeline import analyze, analyze_batch, laya_checkpoint, regenerate_report
 
-FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
@@ -221,9 +217,10 @@ def warmup() -> dict[str, object]:
     return laya_agent.status()
 
 
-if FRONTEND_DIR.is_dir():
-    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
-
-    @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(FRONTEND_DIR / "index.html")
+@app.get("/", include_in_schema=False)
+def root() -> dict[str, str]:
+    return {
+        "service": "SIMGuard AI API",
+        "docs": "/docs",
+        "frontend": os.getenv("FRONTEND_URL", "http://127.0.0.1:8501"),
+    }
