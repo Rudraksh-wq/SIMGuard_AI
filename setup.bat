@@ -91,6 +91,11 @@ if defined DIRTY (
     echo   you have local changes - not pulling. Commit or discard them to get updates.
     goto code_ready
 )
+git rev-parse --abbrev-ref --symbolic-full-name @{u} >nul 2>&1
+if errorlevel 1 (
+    echo   this branch is not on GitHub - nothing to pull
+    goto code_ready
+)
 set "OLD_HEAD="
 for /f "delims=" %%h in ('git rev-parse HEAD') do set "OLD_HEAD=%%h"
 git pull --ff-only --quiet
