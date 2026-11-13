@@ -1,0 +1,23 @@
+{
+  "source_A": "/home/claude/data/ds/sim_swap_fraud_dataset_100000.csv",
+  "source_B": "/home/claude/data/ds/sim_swap_fraud_dataset_50000.csv",
+  "rows_A_dedup": 100000,
+  "rows_B_dedup": 100000,
+  "rows_B_unseen_in_A": 100000,
+  "sizes": {
+    "train": 24000,
+    "val": 3000,
+    "test": 6000
+  },
+  "fraud_rate": {
+    "train": 0.741125,
+    "val": 0.7483333333333333,
+    "test": 0.744
+  },
+  "class_balancing": "none (natural prior kept)",
+  "recovered_rule_label_agreement_audit_only": {
+    "A": 0.99999,
+    "B": 1.0
+  },
+  "seed": 13
+}

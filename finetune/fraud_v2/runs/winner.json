@@ -1,0 +1,15 @@
+{
+  "winner": "a1_6ep",
+  "final_dir": "D:\\safe\\finetune\\fraud_v2\\runs\\20261113_171802_a1_6ep\\final",
+  "selected_epoch": 5,
+  "selection_rule": "lowest val log-loss, tie -> higher hard_dev accuracy (no test data used)",
+  "attempts": {
+    "a1_6ep": {
+      "val_loss": 0.020115682524527508
+    },
+    "a1_cont4": {
+      "val_loss": 0.02526742806644336,
+      "note": "epochs 7-8 continuation, worse"
+    }
+  }
+}

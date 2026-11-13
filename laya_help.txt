@@ -1,0 +1,71 @@
+usage: laya-train [-h] --data DATA [--eval EVAL_DATA] [--out OUTPUT_DIR]
+                  [--base MODEL_DIR] [--text-column TEXT_COLUMN]
+                  [--label-column LABEL_COLUMN] [--question-id QUESTION_ID]
+                  [--instructions INSTRUCTIONS] [--epochs EPOCHS]
+                  [--micro-batch MICRO_BATCH] [--grad-accum GRAD_ACCUM]
+                  [--encoder-lr ENCODER_LR] [--head-lr HEAD_LR]
+                  [--loss {soft-ce,rlcd}] [--label-smoothing LABEL_SMOOTHING]
+                  [--shuffle-options] [--freeze-encoder]
+                  [--target-error TARGET_ERROR]
+                  [--min-abstain-n MIN_ABSTAIN_N] [--device DEVICE]
+                  [--seed SEED] [--max-len MAX_LEN]
+                  [--head-max-len HEAD_MAX_LEN] [--dry-run]
+
+Fine-tune a Laya checkpoint on labelled decisions (JSONL or CSV).
+
+options:
+  -h, --help            show this help message and exit
+  --data DATA           Path to training data file (.jsonl or .csv).
+  --eval, --eval-data EVAL_DATA
+                        Path to evaluation dataset (.jsonl or .csv) for
+                        before/after assessment.
+  --out, --output-dir OUTPUT_DIR
+                        Output directory where the fine-tuned checkpoint will
+                        be saved.
+  --base, --model MODEL_DIR
+                        Base checkpoint path or model ID (default:
+                        'convaiinnovations/laya').
+  --text-column TEXT_COLUMN
+                        CSV column containing the input text/state (default:
+                        'text').
+  --label-column LABEL_COLUMN
+                        CSV column containing the target label (default:
+                        'label').
+  --question-id QUESTION_ID
+                        Question identifier when synthesizing a question from
+                        CSV (default: 'label').
+  --instructions INSTRUCTIONS
+                        Instructions string for synthesized choice question.
+  --epochs EPOCHS       Number of training epochs (default: 4).
+  --micro-batch MICRO_BATCH
+                        Micro-batch size per forward pass (default: 8).
+  --grad-accum GRAD_ACCUM
+                        Gradient accumulation steps (default: 8).
+  --encoder-lr ENCODER_LR
+                        Learning rate for encoder (default: 2.5e-5).
+  --head-lr HEAD_LR     Learning rate for classification heads (default:
+                        1e-4).
+  --loss {soft-ce,rlcd}
+                        Training objective: 'rlcd' or 'soft-ce' (default:
+                        'rlcd').
+  --label-smoothing LABEL_SMOOTHING
+                        Label smoothing epsilon for hard labels in [0, 1)
+                        (default: 0.0).
+  --shuffle-options     Enable random option-order augmentation during
+                        training for choice questions.
+  --freeze-encoder      Freeze encoder weights, training classification heads
+                        only.
+  --target-error TARGET_ERROR
+                        Target error rate for fitting abstention thresholds in
+                        [0, 1] (default: 0.10).
+  --min-abstain-n MIN_ABSTAIN_N
+                        Minimum items in a bucket required to fit an
+                        abstention threshold (default: 10).
+  --device DEVICE       Compute device ('auto', 'cpu', 'cuda', 'mps'; default:
+                        'auto').
+  --seed SEED           Random seed for reproducibility (default: 0).
+  --max-len MAX_LEN     Override maximum state token budget.
+  --head-max-len HEAD_MAX_LEN
+                        Override maximum question head token budget.
+  --dry-run             Inspect dataset, build items, and print stats without
+                        loading model weights or training.

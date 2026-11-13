@@ -1,0 +1,114 @@
+{
+  "run_dir": "D:\\safe\\finetune\\fraud_v2\\runs\\20261113_164704_a1_no_bias",
+  "args": {
+    "base": "convaiinnovations/laya",
+    "data": "D:\\safe\\finetune\\fraud_v2\\data",
+    "runs": "D:\\safe\\finetune\\fraud_v2\\runs",
+    "tag": "a1_no_bias",
+    "device": "cuda",
+    "min_epochs": 12,
+    "max_epochs": 16,
+    "patience": 2,
+    "micro_batch": 4,
+    "grad_accum": 8,
+    "encoder_lr": 1e-05,
+    "head_lr": 0.0001,
+    "weight_decay": 0.01,
+    "loss": "soft-ce",
+    "label_smoothing": 0.0,
+    "freeze_bottom": 14,
+    "freeze_encoder": false,
+    "train_limit": 0,
+    "balance_legit_to": 0.0,
+    "attn_drop_limit": 0.3,
+    "cos_rise_limit": 0.15,
+    "max_drift": 0.1,
+    "max_fraud_leak": 0.002,
+    "max_false_block": 0.01,
+    "keep_all": false,
+    "skip_speed": false,
+    "seed": 0
+  },
+  "base_model_dir": "C:\\Users\\Lenovo\\.cache\\huggingface\\hub\\models--convaiinnovations--laya\\snapshots\\85cc74ddae6109077ebe2853a9b3077fb6606a78",
+  "base_rl_agent_config": {
+    "encoder": "answerdotai/ModernBERT-large",
+    "head_layers": 2,
+    "max_len": 512,
+    "head_max_len": 192,
+    "max_prefixes": 6,
+    "act_costs": {
+      "escalate": 0.5
+    },
+    "cost_wrong_act": 3.0,
+    "amp_dtype": "bf16",
+    "model_name": "rl-agent",
+    "temperature": [
+      1.6369030475616455,
+      1.2514300346374512,
+      1.983399510383606
+    ],
+    "temperature_by_options": {
+      "choice:3-5": 1.7601518630981445,
+      "choice:6-10": 1.0000158548355103,
+      "score:3-5": 1.2514300346374512,
+      "noul:2": 1.983399510383606,
+      "choice:11+": 0.10058280825614929,
+      "choice:2": 1.9063563346862793
+    }
+  },
+  "data_files": {
+    "train": {
+      "path": "D:\\safe\\finetune\\fraud_v2\\data\\train.jsonl",
+      "sha256": "d226b1501ef44f6a61490f77283328e2e1ec1fa7af65a0a697df2ab29eaf7458"
+    },
+    "val": {
+      "path": "D:\\safe\\finetune\\fraud_v2\\data\\val.jsonl",
+      "sha256": "61da21a3f39818b5e47104601d6f54ee8e7693cf299a909aae5addde0d6d7de6"
+    },
+    "test": {
+      "path": "D:\\safe\\finetune\\fraud_v2\\data\\test.jsonl",
+      "sha256": "7dca560b85c7531afd962ed959db4345f3dd487c5847029647321bf8f5ddf873"
+    },
+    "hard_dev": {
+      "path": "D:\\safe\\finetune\\fraud_v2\\data\\hard_dev.jsonl",
+      "sha256": "c7f2fba3aa50e96dcb6e910c2d69375a38ce88e08af5c7e96eeb8d3e257f4843"
+    },
+    "hard_test": {
+      "path": "D:\\safe\\finetune\\fraud_v2\\data\\hard_test.jsonl",
+      "sha256": "5ddb4a43f4448b4f18d5ba4daf16b7f4366212b7e9da6096c20b7e46e6402fc9"
+    }
+  },
+  "versions": {
+    "python": "3.15.0 (tags/v3.15.0:d220409, Oct  9 2026, 11:55:56) [MSC v.1951 64 bit (AMD64)]",
+    "torch": "2.15.0+cu132",
+    "transformers": "5.22.2",
+    "laya": "0.4.31",
+    "platform": "Windows-11-10.0.26300-SP0"
+  },
+  "device": {
+    "type": "cuda",
+    "name": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+    "vram_gb": 5.99951171875
+  },
+  "usage_of_splits": {
+    "train": "gradient",
+    "calib": "temperature fit only (held out before training)",
+    "val": "early stopping + selection",
+    "hard_dev": "monitoring + tie-break",
+    "test/hard_test": "baseline and final only"
+  },
+  "bias": "none",
+  "sizes": {
+    "train_items": 22000,
+    "calib_items": 2000,
+    "val": 3000,
+    "test": 6000,
+    "hard_dev": 300,
+    "hard_test": 600
+  },
+  "trainable_params": {
+    "total": 421293827,
+    "trainable": 198115075,
+    "frozen_tensors": 85
+  }
+}
