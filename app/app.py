@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 import html
+import json
 from uuid import uuid4
 
 import pandas as pd
@@ -977,6 +978,73 @@ def go(page):
     st.rerun()
 
 
+FEATURE_LABELS = {
+    "sim_swap_time_gap_minutes": "OTP → SIM change gap (min)",
+    "device_change_flag": "Device changed",
+    "sim_type_change_flag": "SIM type changed",
+    "imsi_change_flag": "IMSI changed",
+    "iccid_change_flag": "ICCID changed",
+    "otp_and_sim_change_geo_hash_length": "OTP / SIM location similarity",
+    "recent_sim_activation_days": "Days since SIM activation",
+    "num_sim_changes_last_30d": "SIM changes · last 30 days",
+    "previous_sim_holder_tenure_days": "Previous holder tenure (days)",
+    "account_age_days": "Account age (days)",
+    "ip_change_flag": "IP address changed",
+}
+GATE_TEXT = {"block": "BLOCK", "allow": "ALLOW", "human_review": "HUMAN REVIEW"}
+ID_COLUMNS = {"msisdn_hash", "msisdn"}
+
+
+def fresh_case(case):
+    """The newest copy of a case: background Qwen reports, reviews and regenerations update it."""
+    return st.session_state.setdefault("case_updates", {}).get(case.get("case_id"), case)
+
+
+def remember_case(case):
+    st.session_state.setdefault("case_updates", {})[case.get("case_id")] = case
+
+
+def unsafe_id_fields(records):
+    """Subscriber-ID fields whose values are not generated SYNTH- tokens (privacy guard)."""
+    bad = set()
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        for key, value in record.items():
+            normalized = str(key).strip().lower().replace("-", "_").replace(" ", "_")
+            text = "" if value is None else str(value).strip()
+            if normalized in ID_COLUMNS and text and not text.upper().startswith("SYNTH-"):
+                bad.add(str(key))
+    return sorted(bad)
+
+
+def json_records(text):
+    """Records inside pasted / uploaded JSON or JSONL, for the SYNTH- guard. [] if not JSON."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        try:
+            data = [json.loads(line) for line in text.splitlines() if line.strip()]
+        except ValueError:
+            return []
+    if isinstance(data, dict):
+        for key in ("events", "rows", "data", "records", "cases"):
+            if isinstance(data.get(key), list):
+                return data[key]
+        return [data.get("event", data)]
+    return data if isinstance(data, list) else []
+
+
+def section(title, silver=False):
+    pip = "section-block-pip section-pip-silver" if silver else "section-block-pip"
+    st.markdown(f"""
+    <div class='section-block-header'>
+        <div class='{pip}'></div>
+        <div><h2 class='section-block-title'>{title}</h2></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # =========================================================
 # BRAND MASTHEAD
 # =========================================================
@@ -1081,7 +1149,7 @@ def render_recent(filtered):
         st.info("No cases are stored yet. Screen an event to initiate the first audit case.")
         return
     frame = case_frame(filtered)
-    st.dataframe(frame, use_container_width=True, hide_index=True, height=min(380, 42 + 36 * len(frame)))
+    st.dataframe(frame, width="stretch", hide_index=True, height=min(380, 42 + 36 * len(frame)))
     choices = {f"{str(c.get('case_id',''))[:12]} · {fmt(score(c))}/100 · {c.get('status','pending')}": c.get("case_id") for c in filtered}
     chosen = st.selectbox("Open a case", ["Select a case…", *choices], label_visibility="collapsed")
     if chosen != "Select a case…" and st.button("View case details", key="open_case"):
@@ -1104,7 +1172,7 @@ def render_overview():
         dates = st.date_input("Date range", value=(), help="Filters dashboard counts and cases by created date.")
     with refresh:
         st.write("")
-        if st.button("↻ Refresh", use_container_width=True):
+        if st.button("↻ Refresh", width="stretch"):
             load_data(force=True)
             st.rerun()
 
@@ -1129,7 +1197,7 @@ def render_overview():
         if filtered:
             frame = pd.DataFrame([{"date": str(c.get("created_at", ""))[:10], "status": c.get("status", "pending"), "count": 1} for c in filtered])
             chart = frame.pivot_table(index="date", columns="status", values="count", aggfunc="sum", fill_value=0).sort_index()
-            st.line_chart(chart, use_container_width=True, height=250)
+            st.line_chart(chart, width="stretch", height=250)
             totals = frame.groupby("status")["count"].sum().to_dict()
             st.caption("Chart summary: " + ", ".join(f"{status.replace('_', ' ')} {count}" for status, count in sorted(totals.items())) + f" across {frame['date'].nunique()} date(s).")
         else:
@@ -1149,7 +1217,7 @@ def render_overview():
         if scores:
             buckets = pd.cut(scores, bins=[-0.01, 39.99, 69.99, 100], labels=["Low · 0–39", "Medium · 40–69", "High · 70–100"])
             bucket_counts = pd.Series(buckets).value_counts().sort_index()
-            st.bar_chart(bucket_counts, use_container_width=True, height=250)
+            st.bar_chart(bucket_counts, width="stretch", height=250)
             st.caption("Chart summary: " + ", ".join(f"{label} {count}" for label, count in bucket_counts.items()) + ".")
         else:
             st.info("Risk distribution will appear when cases have been analyzed.")
@@ -1178,29 +1246,34 @@ def render_cases():
         except Exception as exc:
             st.error(f"Could not load case details: {exc}")
             return
-        render_case_detail(case)
+        remember_case(case)
+        render_case_detail(case, key="cases")
 
 
-def render_case_detail(case):
+def render_case_detail(case, key="case"):
+    case = fresh_case(case)
+    case_id = case.get("case_id")
     final, ml, laya = case.get("final") or {}, case.get("ml") or {}, case.get("laya") or {}
     case_tier = str(final.get("tier", "unknown")).lower()
     tier_pill = f"<span class='hl-yellow'>TIER: {case_tier.upper()}</span>" if case_tier == "high" else f"<span class='hl-silver'>TIER: {case_tier.upper()}</span>"
     flag_pill = "<span class='hl-dark'>FLAGGED FOR AUDIT</span>" if flag(case) else "<span class='hl-gray'>NO ELEVATED RISK</span>"
+    gate = laya.get("gate")
+    gate_html = f"<span class='hl-silver'>LAYA GATE: {GATE_TEXT.get(gate, 'N/A')}</span>"
 
     dossier_html = f"""
     <div class='dossier-box'>
         <div class='dossier-top'>
             <div>
                 <span class='block-tag-silver'>FORENSIC CASE DOSSIER</span>
-                <span style='margin-left:8px;font-family:var(--font-mono);font-size:0.75rem;color:var(--silver-muted);'>CREATED: {case.get('created_at','—')}</span>
+                <span style='margin-left:8px;font-family:var(--font-mono);font-size:0.75rem;color:var(--silver-muted);'>CREATED: {html.escape(str(case.get('created_at','—')))} · INPUT: {html.escape(str((case.get('input') or {}).get('source', 'api')).upper())}</span>
             </div>
-            <div class='case-id-code'>{case.get('case_id')}</div>
+            <div class='case-id-code'>{html.escape(str(case_id))}</div>
         </div>
         <div style='display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:20px;'>
             <div>
                 <div style='font-family:var(--font-mono);font-size:0.72rem;letter-spacing:0.08em;color:var(--silver-muted);text-transform:uppercase;'>FUSED RISK SCORE</div>
                 <div class='dossier-score-val'>{fmt(final.get('score'))}<span class='dossier-score-max'> / 100</span></div>
-                <div style='display:flex;gap:8px;align-items:center;'>{tier_pill} &nbsp; {flag_pill}</div>
+                <div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;'>{tier_pill} &nbsp; {flag_pill} &nbsp; {gate_html}</div>
             </div>
             <div style='text-align:right;'>
                 <div style='font-family:var(--font-mono);font-size:0.75rem;color:var(--silver-muted);margin-bottom:6px;'>
@@ -1217,52 +1290,87 @@ def render_case_detail(case):
 
     if case.get("agreement") in {"disagree", "laya_unavailable"}:
         st.warning("Model signals disagree or a model is unavailable. Review the available evidence before deciding.")
+    if laya.get("error"):
+        st.caption(f"Laya was unavailable for this case: {laya.get('error')}")
 
     cols = st.columns(4)
-    for col, label, val in zip(cols, ["LightGBM probability", "Anomaly score", "Laya probability", "Final fused score"], [ml.get("lgbm_prob"), ml.get("anomaly"), laya.get("p_fraud"), final.get("score")]):
-        col.metric(label, fmt(val, 2) if val is not None else "Unknown")
+    cols[0].metric("LightGBM fraud probability", fmt(ml.get("lgbm_prob"), 3) if ml.get("lgbm_prob") is not None else "Unknown",
+                   help="Gradient-boosted trees on the 11 features. 70% of the ML risk score.")
+    cols[1].metric("Isolation Forest anomaly", fmt(ml.get("anomaly"), 2) if ml.get("anomaly") is not None else "Unknown",
+                   help="0 = typical of normal traffic, 1 = very unusual. 30% of the ML risk score.")
+    cols[2].metric("Laya p(fraud)", fmt(laya.get("p_fraud"), 3) if laya.get("p_fraud") is not None else "Unknown",
+                   help="Fine-tuned Laya (ModernBERT-large). Gate: block above 0.88, allow below 0.12, otherwise human review.")
+    cols[3].metric("Final fused score", fmt(final.get("score")), help="Weighted log-odds of Laya and the ML risk score, 0-100.")
 
-    st.markdown("""
-    <div class='section-block-header'>
-        <div class='section-block-pip'></div>
-        <div><h2 class='section-block-title'>TELEMETRY EVIDENCE</h2></div>
-    </div>
-    """, unsafe_allow_html=True)
-    evidence = case.get("evidence") or []
-    if evidence:
-        evidence_rows = "".join(f"<div class='evidence-row'><span class='evidence-pip'>▲</span><span>{html.escape(item)}</span></div>" for item in evidence)
-        st.markdown(f"<div class='evidence-box'>{evidence_rows}</div>", unsafe_allow_html=True)
-    else:
-        st.caption("No evidence details were returned by the API.")
+    left, right = st.columns([1, 1])
+    with left:
+        section("WHY THE SCORE IS WHAT IT IS")
+        contributions = ml.get("contributions") or {}
+        if contributions:
+            event = case.get("event") or {}
+            labels = []
+            for name in contributions:
+                value = event.get(name)
+                shown = ("yes" if value else "no") if name.endswith("_flag") else value
+                labels.append(f"{FEATURE_LABELS.get(name, name)} = {shown}")
+            frame = pd.DataFrame({
+                "Raises fraud risk": [max(v, 0.0) for v in contributions.values()],
+                "Lowers fraud risk": [min(v, 0.0) for v in contributions.values()],
+            }, index=labels)
+            st.bar_chart(frame, horizontal=True, color=[SIGNAL, SILVER_MUTED], height=230, width="stretch")
+            st.caption("Top LightGBM per-feature contributions (log-odds) for this case.")
+        else:
+            st.caption("No feature contributions were returned (mock mode).")
+    with right:
+        section("TELEMETRY EVIDENCE")
+        evidence = case.get("evidence") or []
+        if evidence:
+            evidence_rows = "".join(f"<div class='evidence-row'><span class='evidence-pip'>▲</span><span>{html.escape(item)}</span></div>" for item in evidence)
+            st.markdown(f"<div class='evidence-box'>{evidence_rows}</div>", unsafe_allow_html=True)
+        else:
+            st.caption("No rule-based indicators fired for this event.")
 
-    report = case.get("report")
-    if report:
-        st.markdown("""
-        <div class='section-block-header'>
-            <div class='section-block-pip section-pip-silver'></div>
-            <div><h2 class='section-block-title'>INVESTIGATION REPORT</h2></div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.caption(f"Source: {case.get('report_source','unknown')} · Report explains provided evidence; it does not calculate the risk score.")
-        st.markdown(f"<div class='panel' style='font-size:0.92rem;line-height:1.6;'>{html.escape(report)}</div>", unsafe_allow_html=True)
-    elif not flag(case):
-        st.info("No elevated risk signal detected; no investigation report was generated.")
+    render_report_section(case, key)
 
-    st.markdown("""
-    <div class='section-block-header'>
-        <div class='section-block-pip'></div>
-        <div><h2 class='section-block-title'>HUMAN REVIEW DECISION</h2></div>
-    </div>
-    """, unsafe_allow_html=True)
+    with st.expander("Input → parsed features"):
+        info = case.get("input") or {}
+        event = case.get("event") or {}
+        rows = [{"Field": name, "Value": event.get(name), "Meaning": FEATURE_LABELS[name]} for name in EVENT_FIELDS]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        ids = {k: event.get(k) for k in ("event_id", "msisdn_hash", "timestamp") if event.get(k)}
+        if ids:
+            st.caption("Identifiers: " + " · ".join(f"{k} = {v}" for k, v in ids.items()))
+        if info.get("extra"):
+            st.caption("Context kept with the case (not used by the models): " + ", ".join(f"{k} = {v}" for k, v in info["extra"].items()))
+        for note in info.get("notes") or []:
+            st.caption(f"Parser: {note}")
+        if info.get("raw"):
+            st.code(info["raw"], language="text")
+    with st.expander("What Qwen received"):
+        if case.get("report_payload"):
+            st.json(case["report_payload"], expanded=False)
+        else:
+            st.caption("Nothing was sent to Qwen for this case.")
+    with st.expander("Stage latency"):
+        latency = {
+            "LightGBM + Isolation Forest": f"{fmt(ml.get('latency_ms'), 2)} ms",
+            "Laya": f"{fmt(laya.get('latency_ms'), 1)} ms",
+            "Qwen report": "—" if case.get("report_latency_ms") is None else f"{fmt(case['report_latency_ms'] / 1000, 1)} s",
+            "Laya checkpoint": str(laya.get("model", "unknown")),
+        }
+        st.dataframe(pd.DataFrame([latency]), hide_index=True, width="stretch")
+
+    section("HUMAN REVIEW DECISION")
     current = case.get("status", "pending")
     if current == "pending":
-        decision = st.radio("Choose a human review outcome", ["No decision", "Confirm fraud", "Mark as false alarm"], horizontal=True, key=f"decision_{case.get('case_id')}")
+        decision = st.radio("Choose a human review outcome", ["No decision", "Confirm fraud", "Mark as false alarm"], horizontal=True, key=f"{key}_decision_{case_id}")
         if decision != "No decision":
             st.warning(f"Confirm recording ‘{decision}’ for this case.")
-            if st.button("Confirm review decision", type="primary", key=f"confirm_{case.get('case_id')}"):
+            if st.button("Confirm review decision", type="primary", key=f"{key}_confirm_{case_id}"):
                 try:
-                    api_client.review_case(case["case_id"], "confirmed" if decision == "Confirm fraud" else "false_alarm")
-                    st.session_state.selected_case = case["case_id"]
+                    updated = api_client.review_case(case_id, "confirmed" if decision == "Confirm fraud" else "false_alarm")
+                    remember_case({**case, **updated})
+                    st.session_state.selected_case = case_id
                     load_data(force=True)
                     st.success("Review decision saved.")
                     st.rerun()
@@ -1272,14 +1380,109 @@ def render_case_detail(case):
         st.success(f"Analyst decision recorded: {current.replace('_',' ').title()}")
 
 
+def render_report_section(case, key):
+    case_id = case.get("case_id")
+    source = case.get("report_source", "none")
+    section("INVESTIGATION REPORT", silver=True)
+    if source == "pending":
+        st.info("Qwen 3.5 2B is writing the report (about 15–40 s). The template report below is shown until it arrives.")
+        _poll_pending_report(case_id)
+    if case.get("report"):
+        if source == "qwen":
+            meta = f"Written by Qwen 3.5 2B ({case.get('report_model') or 'Qwen/Qwen3.5-2B'})"
+            if case.get("report_latency_ms") is not None:
+                meta += f" in {fmt(case['report_latency_ms'] / 1000, 1)} s"
+        elif source == "template":
+            meta = "Template report (Qwen was not used or not reachable)"
+        else:
+            meta = "Template report, shown while Qwen writes"
+        st.caption(meta + " · The report explains the supplied scores and evidence; it does not calculate the risk score.")
+        if case.get("report_error") and source == "template":
+            st.caption(f"Why not Qwen: {case['report_error']}")
+        with st.container(border=True):
+            st.markdown(case["report"])  # Markdown only; raw HTML in model output is not rendered
+    elif not flag(case):
+        st.info("No elevated risk signal and Laya did not ask for human review, so no report was written automatically.")
+    if source != "pending":
+        label = "Regenerate with Qwen" if source == "qwen" else "Ask Qwen 3.5 2B for a report"
+        if st.button(label, key=f"{key}_report_{case_id}"):
+            with st.spinner("Qwen 3.5 2B is writing the report…"):
+                try:
+                    remember_case(api_client.regenerate_report(case_id))
+                    load_data(force=True)
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Qwen report failed: {exc}")
+
+
+@st.fragment(run_every=3)
+def _poll_pending_report(case_id):
+    """Re-check a pending case every 3 s; redraw the page once the Qwen report is in."""
+    try:
+        latest = api_client.get_case(case_id)
+    except Exception:
+        return
+    if latest.get("report_source") != "pending":
+        remember_case(latest)
+        load_data(force=True)
+        st.rerun()
+
+
+PROMPT_EXAMPLE = (
+    "SIM changed 45 minutes after an OTP request. Device changed, IMSI changed, ICCID changed, "
+    "SIM type not changed. Geohash similarity 0.12. SIM activated 3 days ago, 2 SIM changes in last "
+    "30 days. Previous holder tenure 40 days, account age 120 days. IP changed."
+)
+
+
+def run_analysis(call, key):
+    """Run one API analysis call and keep its response for the results panel."""
+    try:
+        response = call()
+    except Exception as exc:
+        st.error(f"Analysis failed: {exc}. No mock score was substituted.")
+        return
+    st.session_state[f"{key}_response"] = response
+    for item in response.get("results", []):
+        remember_case(item)
+    load_data(force=True)
+
+
+def render_analysis_result(key):
+    response = st.session_state.get(f"{key}_response")
+    if not response:
+        return
+    results = response.get("results", [])
+    flagged = sum(flag(r) for r in results)
+    st.success(f"{(response.get('source') or '').upper()} input · analyzed {response.get('rows_analysed', len(results))} of "
+               f"{response.get('rows_received', len(results))} · {flagged} flagged · saved to the case store.")
+    for note in response.get("notes", []):
+        st.info(note)
+    errors = response.get("errors", [])
+    if errors:
+        st.warning(f"{len(errors)} row(s) could not be analyzed.")
+        st.dataframe(pd.DataFrame(errors), width="stretch", hide_index=True)
+    if not results:
+        return
+    if len(results) == 1:
+        render_case_detail(results[0], key=key)
+        return
+    current = [fresh_case(r) for r in results]
+    st.dataframe(case_frame(current), width="stretch", hide_index=True, height=min(500, 42 + 36 * min(len(current), 12)))
+    options = {f"{str(item.get('case_id', ''))[:12]} · {fmt(score(item))}/100 · {'flagged' if flag(item) else 'not flagged'}": item for item in current}
+    chosen = st.selectbox("Inspect an analyzed case", ["Select a case…", *options], key=f"{key}_pick")
+    if chosen != "Select a case…":
+        render_case_detail(options[chosen], key=key)
+
+
 def render_analyze():
     render_hero(
         tag="WORKSPACE // 03",
         title_html="TELEMETRY <span class='hl-yellow'>EVENT SCREENER</span>",
-        subtitle_html="Evaluate synthetic <span class='hl-yellow'>11-feature SIM-swap events</span> through <span class='hl-silver'>LightGBM, Isolation Forest, and Laya</span>.",
+        subtitle_html="Evaluate synthetic <span class='hl-yellow'>11-feature SIM-swap events</span> through <span class='hl-silver'>LightGBM, Isolation Forest, and Laya</span>, with <span class='hl-yellow'>Qwen 3.5 2B</span> reports for flagged cases.",
         badge="INFERENCE ENGINE",
     )
-    guided, upload = st.tabs(["Guided questions", "Upload CSV"])
+    guided, words, upload, paste = st.tabs(["Guided questions", "Describe in words", "Upload file", "Paste CSV / JSON"])
     with guided:
         st.markdown("<div class='callout'><span class='hl-dark'>SAFETY NOTICE</span> Synthetic test data only. The form matches SIMGuard's current <span class='hl-yellow'>11-feature model schema</span>; real subscriber IDs and phone numbers are not accepted.</div>", unsafe_allow_html=True)
         with st.form("event_form"):
@@ -1295,7 +1498,7 @@ def render_analyze():
                 st.session_state.synthetic_subscriber_token = f"SYNTH-{uuid4().hex[:12].upper()}"
             subscriber_hash = c2.text_input("Synthetic subscriber token", value=st.session_state.synthetic_subscriber_token, disabled=True, help="Generated test token. Real subscriber IDs and hashes are not accepted in this prototype.")
             timestamp = st.text_input("Event timestamp (ISO 8601)", value=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-            
+
             st.markdown("""
             <div class='section-block-header' style='margin:20px 0 10px;'>
                 <span class='hl-silver'>02</span>
@@ -1320,7 +1523,7 @@ def render_analyze():
             c1, c2 = st.columns(2)
             account_age = c1.number_input("Account age (days)", min_value=0.0, value=120.0, step=1.0)
             ip_changed = c2.selectbox("IP address changed?", [0, 1], format_func=lambda x: "Yes" if x else "No")
-            submitted = st.form_submit_button("Analyze event", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("Analyze event", type="primary", width="stretch")
         if submitted:
             if not event_id.strip() or not subscriber_hash.strip().upper().startswith("SYNTH-") or not timestamp.strip():
                 st.error("Enter an event ID, a generated SYNTH- token, and a timestamp.")
@@ -1341,66 +1544,69 @@ def render_analyze():
                     "account_age_days": account_age,
                     "ip_change_flag": ip_changed,
                 }
-                try:
-                    result = api_client.analyze(payload)
-                    st.session_state.selected_case = result.get("case_id")
-                    load_data(force=True)
-                    st.success("Analysis completed and saved to the case store.")
-                    render_case_detail(result)
-                except Exception as exc:
-                    st.error(f"Analysis failed: {exc}. No mock score was substituted. Check API health and retry.")
+                # through the input endpoint so the Qwen report is written in the background
+                run_analysis(lambda: api_client.analyze_input(json.dumps(payload), "json"), "guided")
+        render_analysis_result("guided")
+
+    with words:
+        st.caption("Describe one event in plain English or as `key: value` lines. The API reads the 11 features out of the text; "
+                   "anything it cannot find is reported, never guessed.")
+        prompt = st.text_area("Event description", height=150, placeholder=PROMPT_EXAMPLE, key="prompt_text")
+        c1, c2 = st.columns([1, 4])
+        if c1.button("Analyze text", type="primary", key="analyze_text"):
+            if not prompt.strip():
+                st.error("Write a description first.")
+            else:
+                run_analysis(lambda: api_client.analyze_input(prompt, "text"), "text")
+        if c2.button("Use the example", key="prompt_example"):
+            st.session_state.prompt_text = PROMPT_EXAMPLE
+            st.rerun()
+        render_analysis_result("text")
+
     with upload:
-        st.markdown("#### Analyze a CSV batch")
-        st.caption("The API parses and analyzes up to 2,000 rows. Required model features and supported column aliases are listed below.")
+        st.markdown("#### Analyze a file")
+        st.caption("CSV / TSV with a header row, JSON (an object, a list, or {\"events\": [...]}), JSONL, or a TXT description. "
+                   "The API analyzes up to 2,000 rows. Required model features (common aliases are accepted):")
         st.code(",".join(EVENT_FIELDS), language="text")
-        file = st.file_uploader("Choose a CSV file", type=["csv"], key="csv_upload")
+        file = st.file_uploader("Choose a file", type=["csv", "tsv", "json", "jsonl", "txt"], key="file_upload")
         if file:
             content = file.getvalue()
             st.caption(f"{len(content):,} bytes · {file.name}")
-            try:
-                raw = pd.read_csv(file, dtype=str)
-            except Exception as exc:
-                st.error(f"Could not read this CSV: {exc}")
-            else:
-                id_columns = [
-                    name for name in raw.columns
-                    if name.strip().lower().replace("-", "_").replace(" ", "_") in {"msisdn_hash", "msisdn"}
-                ]
-                unsafe_ids = []
-                for column in id_columns:
-                    values = raw[column].dropna().str.strip()
-                    values = values[values.ne("")]
-                    if not values.str.upper().str.startswith("SYNTH-").all():
-                        unsafe_ids.append(column)
-                if unsafe_ids:
-                    st.error("Subscriber identifier columns must contain only generated SYNTH- tokens: " + ", ".join(unsafe_ids))
-                elif st.button("Analyze CSV", type="primary", key="analyze_csv"):
-                    try:
-                        response = api_client.analyze_upload(file.name, content)
-                        st.session_state.last_batch_response = response
-                        load_data(force=True)
-                        st.success(f"Analyzed {response['rows_analysed']} of {response['rows_received']} rows.")
-                    except Exception as exc:
-                        st.error(f"Batch analysis failed: {exc}. Check the API connection and review any row-level errors.")
+            name = file.name.lower()
+            unsafe = []
+            if name.endswith((".csv", ".tsv")):
+                try:
+                    raw = pd.read_csv(file, dtype=str, sep="\t" if name.endswith(".tsv") else ",")
+                    unsafe = unsafe_id_fields(raw.to_dict("records"))
+                except Exception as exc:
+                    st.error(f"Could not read this file: {exc}")
+                    unsafe = None
+            elif name.endswith((".json", ".jsonl")):
+                unsafe = unsafe_id_fields(json_records(content.decode("utf-8", errors="replace")))
+            if unsafe:
+                st.error("Subscriber identifier fields must contain only generated SYNTH- tokens: " + ", ".join(unsafe))
+            elif unsafe is not None and st.button("Analyze file", type="primary", key="analyze_file"):
+                run_analysis(lambda: api_client.analyze_upload(file.name, content), "file")
+        render_analysis_result("file")
 
-        response = st.session_state.get("last_batch_response")
-        if response:
-            for note in response.get("notes", []):
-                st.info(note)
-            errors = response.get("errors", [])
-            if errors:
-                st.warning(f"{len(errors)} row(s) could not be analyzed.")
-                st.dataframe(pd.DataFrame(errors), use_container_width=True, hide_index=True)
-            results = response.get("results", [])
-            if results:
-                st.dataframe(case_frame(results), use_container_width=True, hide_index=True, height=min(500, 42 + 36 * min(len(results), 12)))
-                case_options = {
-                    f"{str(item.get('case_id', ''))[:12]} · {fmt(score(item))}/100": item
-                    for item in results
-                }
-                selected = st.selectbox("Inspect an analyzed case", ["Select a case…", *case_options], key="batch_case_detail")
-                if selected != "Select a case…":
-                    render_case_detail(case_options[selected])
+    with paste:
+        st.caption("Paste CSV (with a header row) or JSON. The format is detected automatically.")
+        pasted = st.text_area("CSV or JSON", height=180, key="pasted_text")
+        if st.button("Analyze pasted data", type="primary", key="analyze_paste"):
+            unsafe = unsafe_id_fields(json_records(pasted))
+            if not unsafe and not pasted.lstrip().startswith(("{", "[")):
+                try:
+                    from io import StringIO
+                    unsafe = unsafe_id_fields(pd.read_csv(StringIO(pasted), dtype=str).to_dict("records"))
+                except Exception:
+                    unsafe = []
+            if not pasted.strip():
+                st.error("Paste CSV or JSON first.")
+            elif unsafe:
+                st.error("Subscriber identifier fields must contain only generated SYNTH- tokens: " + ", ".join(unsafe))
+            else:
+                run_analysis(lambda: api_client.analyze_input(pasted), "paste")
+        render_analysis_result("paste")
 
 
 def render_data_metrics():
@@ -1413,15 +1619,37 @@ def render_data_metrics():
     st.markdown("<div class='panel'><div class='panel-title'>OPERATIONAL <span class='hl-yellow'>CASE REPOSITORY</span></div><p class='subtle'>Counts below come from GET /cases and reflect records stored in the SQLite database.</p></div>", unsafe_allow_html=True)
     render_kpis(cases)
     st.markdown("<div class='panel'><div class='panel-title'>SYNTHETIC <span class='hl-silver'>DATASET PROFILE</span></div><div style='margin:8px 0;'><span class='hl-dark'>BENCHMARK</span> <span class='hl-gray'>100,000 SYNTHETIC ROWS</span></div><p class='subtle'>The referenced dataset contains <span class='hl-yellow'>73,907 positive</span> and <span class='hl-silver'>26,093 negative</span> sim_swap_flag labels. These are dataset labels, not operational live traffic.</p></div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class='section-block-header'>
-        <div class='section-block-pip'></div>
-        <div><h2 class='section-block-title'>CURRENT BACKEND ARCHITECTURE</h2></div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.write("• CSV batches use POST /analyze/upload; the API caps processing at 2,000 rows.")
+
+    section("MODEL BENCHMARKS · SYNTHETIC HELD-OUT DATA")
+    ml_metrics = ((health or {}).get("ml") or {}).get("metrics") or {}
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**LightGBM + Isolation Forest** (risk score ≥ 70 = flagged)")
+        if ml_metrics:
+            split = ml_metrics.get("split_sizes", {})
+            matrix = (ml_metrics.get("confusion_matrix") or {}).get("matrix") or [[None, None], [None, None]]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Precision", fmt(ml_metrics.get("precision"), 4))
+            c2.metric("Recall", fmt(ml_metrics.get("recall"), 4))
+            c3.metric("PR-AUC", fmt(ml_metrics.get("pr_auc"), 5))
+            st.caption(f"Test split of {split.get('test', '—'):,} rows · missed fraud {matrix[1][0]} · false alarms {matrix[0][1]} · "
+                       f"{ml_metrics.get('lgbm_rounds', '—')} LightGBM trees, 200 Isolation Forest trees.")
+        else:
+            st.caption("Scoring-engine metrics are unavailable (API offline or mock mode).")
+    with right:
+        st.markdown("**Fine-tuned Laya** (ModernBERT-large, 421M parameters)")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Test accuracy", "0.9917", "+0.735 vs base")
+        c2.metric("Hard cases", "0.8333", "+0.283 vs base")
+        c3.metric("GPU latency", "39 ms", "13 ms batched", delta_color="off")
+        st.caption("Base Laya: 0.2565 test / 0.5500 hard (no signal). Model and full card: "
+                   "[Kyoiske/simguard-laya-fraud](https://huggingface.co/Kyoiske/simguard-laya-fraud).")
+
+    section("CURRENT BACKEND ARCHITECTURE", silver=True)
+    st.write("• Inputs: guided form, plain-English description, CSV / TSV / JSON / JSONL / TXT files or pasted CSV / JSON — all parsed by the API (POST /analyze/input, /analyze/upload; up to 2,000 rows). Missing features are reported, never guessed.")
+    st.write("• Every event is scored by LightGBM + Isolation Forest and by Laya; rule-based evidence lists the indicators.")
+    st.write("• Qwen 3.5 2B (Kaggle) writes reports for flagged / human-review cases in the background (up to 3 per upload; the rest on demand). Each report is checked for invented numbers and over-claims; otherwise the template report is kept.")
     st.write("• No analytics aggregation endpoint; dashboard charts aggregate GET /cases in the UI.")
-    st.write("• The guided form and CSV columns use the same 11 model features as the live inference pipeline.")
 
 
 def render_status():
@@ -1434,19 +1662,67 @@ def render_status():
     if not health:
         st.error(f"Health data unavailable. {data['error'] or 'Check that the API is running and API_URL is correct.'}")
         return
+    if st.button("↻ Re-check services", key="recheck_health"):
+        load_data(force=True)
+        st.rerun()
     config = health
     mocked = bool(config.get("mock_models"))
-    checkpoint = str(config.get("laya_checkpoint") or "unknown")
+    ml = config.get("ml") or {}
+    laya = config.get("laya") or {}
+    qwen = config.get("qwen") or {}
+
+    def state(ok, ready="Available", down="Unavailable", pending=None):
+        if mocked:
+            return "Mock", "badge-mock"
+        if ok is None and pending:
+            return pending, "badge-mock"
+        return (ready, "badge-online") if ok else (down, "badge-offline")
+
+    laya_ok = True if laya.get("loaded") else (False if laya.get("error") else None)
     entries = [
-        ("FastAPI Application Gateway", "Available", "badge-online"),
-        ("SQLite Case Persistence Layer", "Available" if config.get("db_ok") else "Unavailable", "badge-online" if config.get("db_ok") else "badge-offline"),
-        ("LightGBM + Isolation Forest Pipeline", "Mock" if mocked else "Unknown", "badge-mock" if mocked else "badge-offline"),
-        ("Laya / OpenLaya Neural Engine", "Mock" if mocked else "Available" if checkpoint.lower() != "unknown" else "Unknown", "badge-mock" if mocked else "badge-online" if checkpoint.lower() != "unknown" else "badge-offline"),
-        ("Qwen Report Generation Agent", "Mock" if mocked else "Available" if config.get("ollama_ok") else "Unavailable", "badge-mock" if mocked else "badge-online" if config.get("ollama_ok") else "badge-offline"),
+        ("FastAPI Application Gateway", ("Available", "badge-online")),
+        ("SQLite Case Persistence Layer", state(config.get("db_ok"))),
+        ("LightGBM + Isolation Forest Pipeline", state(ml.get("ok"))),
+        ("Laya Fine-tuned Decision Model", state(laya_ok, pending="Loading")),
+        ("Qwen 3.5 2B Report Agent (Kaggle)", state(qwen.get("reachable"), down="Offline · template reports")),
     ]
-    for label, value, badge_class in entries:
-        st.markdown(f"<div class='health-block-item'><span class='health-name'>{label}</span><span class='{badge_class}'>{value.upper()}</span></div>", unsafe_allow_html=True)
-    st.caption(f"Fusion uses weighted log-odds. Laya checkpoint: {checkpoint}. Current Laya weight: {config.get('laya_weight','unknown')}; threshold: {config.get('laya_fraud_threshold','unknown')}.")
+    for label, (value, badge_class) in entries:
+        st.markdown(f"<div class='health-block-item'><span class='health-name'>{label}</span><span class='{badge_class}'>{html.escape(value.upper())}</span></div>", unsafe_allow_html=True)
+    if ml.get("ok"):
+        st.caption(f"Scoring engine: {ml.get('lgbm_trees', '—')} LightGBM trees · {ml.get('iforest_trees', '—')} Isolation Forest trees.")
+    elif ml.get("error"):
+        st.caption(f"Scoring engine error: {ml['error']}")
+    gate = laya.get("gate") or {}
+    st.caption(f"Laya checkpoint: {config.get('laya_checkpoint', 'unknown')} · gate allow ≤ {fmt(gate.get('lo'), 3)} / block ≥ {fmt(gate.get('hi'), 3)}"
+               + (f" · error: {laya['error']}" if laya.get("error") else ""))
+    st.caption(f"Fusion uses weighted log-odds. Laya weight: {config.get('laya_weight', 'unknown')}; threshold: {config.get('laya_fraud_threshold', 'unknown')}.")
+
+    section("QWEN 3.5 2B CONNECTION", silver=True)
+    st.caption(f"Model {qwen.get('model', 'Qwen/Qwen3.5-2B')} · link in use: {qwen.get('endpoint') or 'none'} · {qwen.get('detail', '')}")
+    st.caption("The Kaggle notebook's link changes each session. The API finds it automatically through the discovery topic; "
+               "if that fails, paste the notebook's ENDPOINT line here. The link is tested before it is saved.")
+    with st.form("qwen_link"):
+        link = st.text_input("Kaggle notebook link", placeholder="https://xxxxxxxxxxxxxxxx.gradio.live")
+        save, forget = st.columns([1, 1])
+        do_save = save.form_submit_button("Test & save link", type="primary", width="stretch")
+        do_forget = forget.form_submit_button("Forget pasted link", width="stretch")
+    if do_save:
+        if not link.strip():
+            st.error("Paste a link first.")
+        else:
+            try:
+                result = api_client.set_qwen_endpoint(link.strip())
+                st.success(f"Saved. Qwen answers at {result.get('override')}.")
+                load_data(force=True)
+            except Exception as exc:
+                st.error(f"Not saved: {exc}")
+    if do_forget:
+        try:
+            api_client.clear_qwen_endpoint()
+            st.success("Pasted link removed; the API uses discovery and .env again.")
+            load_data(force=True)
+        except Exception as exc:
+            st.error(f"Could not remove the link: {exc}")
 
 
 def render_privacy_use():
@@ -1455,14 +1731,16 @@ def render_privacy_use():
     st.warning("Synthetic data only. Do not enter real subscriber information, real subscriber hashes, or live case records.")
 
     st.markdown("### Data and purpose")
-    st.write("The analysis form accepts an event ID, a generated synthetic subscriber token, timestamp, and the 11 SIMGuard model features. CSV uploads are parsed by the API and may include these features plus optional synthetic IDs and context. The API returns and stores analyzed events with risk scores, evidence, report text, case status, and timestamps. This data is used to screen demo events, show case results, and record a human review.")
+    st.write("The analysis form accepts an event ID, a generated synthetic subscriber token, timestamp, and the 11 SIMGuard model features. File uploads (CSV, TSV, JSON, JSONL, TXT), pasted CSV / JSON and typed descriptions are parsed by the API and may include these features plus optional synthetic IDs and context. The API returns and stores analyzed events with risk scores, evidence, report text, case status, and timestamps. This data is used to screen demo events, show case results, and record a human review.")
 
     st.markdown("### Where data goes and how long it stays")
-    st.write(f"Submitting one event sends it from this browser to the configured API at `{api_client.API_URL}`. The API stores the full response in SQLite (`DB_PATH`, or `simguard.db` by default); review actions also create an audit record. The prototype has no automatic retention limit, erasure workflow, or delete endpoint. Stored rows remain until the database is manually cleared by its operator. The API has no authentication, so keep both services on a trusted local machine and do not expose them to the public internet.")
-    st.write("CSV file contents are sent to the configured API for parsing and batch analysis. The API stores each analyzed case in SQLite.")
+    st.write(f"Submitting one event sends it from this browser to the configured API at `{api_client.API_URL}`. The API stores the full response in SQLite (`DB_PATH`; `setup.bat` sets `data/simguard.db`, otherwise `simguard.db`); review actions also create an audit record. The prototype has no automatic retention limit, erasure workflow, or delete endpoint. Stored rows remain until the database is manually cleared by its operator. The API has no authentication, so keep both services on a trusted local machine and do not expose them to the public internet.")
+    st.write("Uploaded or pasted contents and typed descriptions are sent to the configured API for parsing and analysis. The API stores each analyzed case, including the original input (up to 2,000 characters), in SQLite.")
 
     st.markdown("### Analytics and external services")
-    st.write("No Google Analytics, advertising pixels, or iframe embeds are present in the UI. Streamlit usage statistics are disabled in the app-local configuration. The API health check requests `/api/tags` from the configured `OLLAMA_URL` (default: localhost); if an operator points that setting to a remote service, that connection must be disclosed before real data is used. The Qwen agent is not included in this repository, so the current pipeline uses its local template fallback for reports.")
+    st.write("No Google Analytics, advertising pixels, or iframe embeds are present in the UI. Streamlit usage statistics are disabled in the app-local configuration.")
+    st.write("**Qwen 3.5 2B runs outside this machine**, in the operator's Kaggle notebook (`rudraksh12/qwen3-5`) behind a password-protected Gradio link. For flagged and human-review cases, and whenever an analyst asks for a report, the API sends that service the case verdict, the 11 event features, the model scores and contributions, the evidence list, non-label input context, and, for typed descriptions, the prompt text (up to 1,500 characters). The dataset label is never sent. If the service is unreachable, the local template report is used instead.")
+    st.write("To find the notebook's current link, the API reads the operator's discovery topic on the public ntfy.sh service (only the link is published there, never case data). On first setup, the fine-tuned Laya model is downloaded from Hugging Face (`Kyoiske/simguard-laya-fraud`); no case data is sent there.")
 
     st.markdown("### Prototype use conditions")
     st.write("Use only synthetic demonstration data. Risk scores are decision support and do not establish that a person committed fraud. A human analyst must review any model flag. This prototype is not a production service or a binding service agreement; public operation requires an identified operator, access controls, support and grievance contact, retention and deletion rules, and a reviewed privacy policy.")
