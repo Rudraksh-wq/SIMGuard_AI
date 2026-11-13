@@ -34,7 +34,7 @@ python -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501
 ## Qwen link (the Kaggle link is temporary)
 
 The backend tries, in order: the last link that worked, a link pasted in the UI (click the
-"Qwen" status pill; saved in `.qwen_endpoint.json`), the link the notebook published to its
+Streamlit console under **System status → Qwen 3.5 2B connection**; saved in `.qwen_endpoint.json`), the link the notebook published to its
 discovery topic, and `QWEN_ENDPOINT`. Dead links are skipped automatically.
 
 - **Fixed URL (best):** free ngrok account -> Kaggle secrets `NGROK_AUTHTOKEN` + `NGROK_DOMAIN`.
