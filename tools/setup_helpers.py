@@ -4,7 +4,8 @@
     python tools/setup_helpers.py torch-info         print the installed torch build and device
     python tools/setup_helpers.py ensure-env         create .env from .env.example if missing
     python tools/setup_helpers.py wait-health PORT   wait until the API answers (max 120 s)
-    python tools/setup_helpers.py status PORT        print a one-screen status of the running app
+    python tools/setup_helpers.py wait-url URL       wait until URL answers 200 (max 120 s)
+    python tools/setup_helpers.py status PORT       print a one-screen status of the running app
 """
 from __future__ import annotations
 
@@ -61,7 +62,23 @@ def wait_health(port: str) -> None:
         except requests.RequestException:
             pass
         time.sleep(1)
-    print("  server did not answer within 120 s - see the 'SIMGuard AI server' window")
+    print("  server did not answer within 120 s - see the 'SIMGuard AI API' window")
+    sys.exit(1)
+
+
+def wait_url(url: str) -> None:
+    import requests
+
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        try:
+            if requests.get(url, timeout=3).status_code == 200:
+                print("  frontend is up")
+                return
+        except requests.RequestException:
+            pass
+        time.sleep(1)
+    print(f"  {url} did not answer within 120 s - see the 'SIMGuard AI frontend' window")
     sys.exit(1)
 
 
@@ -99,6 +116,8 @@ def main() -> None:
         ensure_env()
     elif command == "wait-health":
         wait_health(sys.argv[2])
+    elif command == "wait-url":
+        wait_url(sys.argv[2])
     elif command == "status":
         status(sys.argv[2])
     else:

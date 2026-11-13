@@ -32,6 +32,10 @@ if not defined VENV set "VENV=%~dp0safe"
 set "PY=%VENV%\Scripts\python.exe"
 set "PORT=%SIMGUARD_PORT%"
 if not defined PORT set "PORT=8000"
+set "UI_PORT=%SIMGUARD_UI_PORT%"
+if not defined UI_PORT set "UI_PORT=8501"
+rem the API uses FRONTEND_URL to know where the Streamlit app lives
+set "FRONTEND_URL=http://127.0.0.1:%UI_PORT%"
 set "STAMP=%VENV%\.simguard_deps"
 set "LAYA_DIR=%~dp0finetune\fraud_v2\runs\20261113_171802_a1_6ep\final"
 set "PIP_DISABLE_PIP_VERSION_CHECK=1"
@@ -167,20 +171,34 @@ if defined NO_START goto end
 
 rem ---------------------------------------------------------------- start
 echo.
-echo  Starting SIMGuard AI on http://127.0.0.1:%PORT% ...
+echo  Starting the API on http://127.0.0.1:%PORT% ...
 "%PY%" -c "import requests,sys;requests.get('http://127.0.0.1:%PORT%/health',timeout=2);sys.exit(0)" >nul 2>&1
 if not errorlevel 1 (
     echo   already running
-    goto open_browser
+    goto api_ready
 )
-start "SIMGuard AI server" "%PY%" -m uvicorn api.main:app --host 127.0.0.1 --port %PORT%
+start "SIMGuard AI API" "%PY%" -m uvicorn api.main:app --host 127.0.0.1 --port %PORT%
 "%PY%" tools\setup_helpers.py wait-health %PORT%
 if errorlevel 1 goto fail
-:open_browser
+:api_ready
 "%PY%" tools\setup_helpers.py status %PORT%
-start "" "http://127.0.0.1:%PORT%/"
+
 echo.
-echo  The app is open in your browser. Close the "SIMGuard AI server" window to stop it.
+echo  Starting the analyst frontend on http://127.0.0.1:%UI_PORT% ...
+"%PY%" -c "import requests,sys;requests.get('http://127.0.0.1:%UI_PORT%/_stcore/health',timeout=2);sys.exit(0)" >nul 2>&1
+if not errorlevel 1 (
+    echo   already running
+    goto ui_ready
+)
+set "API_URL=http://127.0.0.1:%PORT%"
+start "SIMGuard AI frontend" /d "%~dp0app" "%PY%" -m streamlit run app.py --server.address 127.0.0.1 --server.port %UI_PORT% --server.headless true
+"%PY%" tools\setup_helpers.py wait-url "http://127.0.0.1:%UI_PORT%/_stcore/health"
+if errorlevel 1 goto fail
+:ui_ready
+start "" "http://127.0.0.1:%UI_PORT%/"
+echo.
+echo  SIMGuard AI is open in your browser at http://127.0.0.1:%UI_PORT%
+echo  To stop it, close the "SIMGuard AI API" and "SIMGuard AI frontend" windows.
 goto end
 
 rem ==========================================================================================
