@@ -1,7 +1,8 @@
 """Small helpers for setup.bat (kept in Python so the batch file stays simple and robust).
 
     python tools/setup_helpers.py deps-hash          print a hash of requirements + constraints
-    python tools/setup_helpers.py torch-info         print the installed torch build and device
+    python tools/setup_helpers.py laya-ensure DIR      download the fine-tuned Laya model into DIR if missing
+    python tools/setup_helpers.py torch-info        print the installed torch build and device
     python tools/setup_helpers.py ensure-env         create .env from .env.example if missing
     python tools/setup_helpers.py wait-health PORT   wait until the API answers (max 120 s)
     python tools/setup_helpers.py wait-url URL       wait until URL answers 200 (max 120 s)
@@ -94,6 +95,31 @@ def status(port: str) -> None:
     print(f"  Qwen 3.5 2B    : {'online at ' + str(qwen.get('endpoint')) if qwen.get('reachable') else 'offline (template reports) - ' + str(qwen.get('detail'))[:120]}")
 
 
+LAYA_REPO = "Kyoiske/simguard-laya-fraud"
+LAYA_FILES = ("model.safetensors", "gate.json", "questions.json", "rl_agent_config.json",
+              "encoder/config.json", "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json")
+
+
+def laya_ensure(folder: str) -> None:
+    """Make sure the fine-tuned Laya model is in `folder`; download it from the Hub if not."""
+    path = Path(folder)
+    missing = [name for name in LAYA_FILES if not (path / name).is_file()]
+    if not missing:
+        print(f"  found at {path}")
+        return
+    print(f"  downloading {LAYA_REPO} from Hugging Face - about 850 MB, please wait")
+    try:
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(repo_id=LAYA_REPO, local_dir=str(path), allow_patterns=list(LAYA_FILES) + ["export_report.json"])
+    except Exception as error:
+        print(f"  download failed: {type(error).__name__}: {error}")
+        print("  The app still runs with LightGBM + Isolation Forest; run setup.bat again to retry.")
+        return
+    still = [name for name in LAYA_FILES if not (path / name).is_file()]
+    print("  downloaded" if not still else f"  still missing: {', '.join(still)}")
+
+
 def py_version() -> None:
     print(f"Python {sys.version.split()[0]} at {sys.prefix}")
 
@@ -108,6 +134,8 @@ def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command == "deps-hash":
         deps_hash()
+    elif command == "laya-ensure":
+        laya_ensure(sys.argv[2])
     elif command == "py-version":
         py_version()
     elif command == "torch-info":

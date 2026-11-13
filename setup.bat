@@ -138,13 +138,8 @@ echo   done
 rem ---------------------------------------------------------------- 6. Laya model
 echo.
 echo [6/7] Fine-tuned Laya model
-if exist "%LAYA_DIR%\model.safetensors" (
-    echo   found at %LAYA_DIR%
-) else (
-    echo   NOT FOUND at %LAYA_DIR%
-    echo   It is not in git because it is too large. Copy the "final" folder there from the
-    echo   training machine. Until then the app runs with LightGBM + Isolation Forest only.
-)
+rem downloaded from https://huggingface.co/Kyoiske/simguard-laya-fraud when missing
+"%PY%" tools\setup_helpers.py laya-ensure "%LAYA_DIR%"
 
 rem ---------------------------------------------------------------- 7. self-test
 echo.
