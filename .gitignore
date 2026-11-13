@@ -5,4 +5,8 @@
 /Lib/
 /Scripts/
 /pyvenv.cfg
+
+# Local editor settings
+.vscode/
+
 safe/
