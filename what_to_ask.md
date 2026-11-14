@@ -14,8 +14,8 @@ Expected: "I understood 6 of the 11 values. 5 are still missing", and it asks fo
 - how long ago the SIM was activated
 - the previous holder's tenure
 - whether the IP changed
-4. SIM was changed 3 minutes after an OTP request. New device, IMSI and ICCID both changed, and the SIM type changed to eSIM. Location similarity is 0.01. The SIM was activated 0 days ago, with 6 SIM changes in the last 30 days. The previous holder had the number for 4 days. The account is 20 days old. IP address changed.
-Expected: all 11 values are read, the case is flagged, Laya’s gate says block (p ≈ 1.0), LightGBM and Isolation Forest both score high, and the overall score is high. This is the extreme case, so the score should be at least as high as case 1.Expected: all 11 values are read, the case is flagged, Laya’s gate says block (p ≈ 1.0), LightGBM and Isolation Forest both score high, and the overall score is high. This is the extreme case, so the score should be at least as high as case 1.
+4. The swap happened about 6,300 minutes after the OTP. Same device and SIM type, IMSI unchanged, but the ICCID changed. Location similarity 0.35. SIM activated 117 days ago, 5 SIM changes in the last 30 days. The previous holder had it 416 days, and the account is 508 days old. The IP changed.
 
-5. SIM was changed 1 day after the OTP. Device changed, IMSI unchanged, ICCID changed, same SIM type. Location similarity 0.40. The SIM was activated 20 days ago, with 2 SIM changes in the last 30 days. The previous holder had the number for 60 days and the account is 1 year old. IP address changed.
-Expected: all 11 values are read. The signals are mixed, so Laya’s gate should land in between (for example p of 0.3 to 0.7), and the score should be medium. The case may be flagged for manual review, not auto-blocked. Check that the UI shows a graded outcome and doesn’t force a binary one.
+5. These are two cases, a and b:
+- (a) 61: "Swap 814 minutes after the OTP. Device changed, SIM type and IMSI and ICCID unchanged. Location similarity 0.37. SIM activated 355 days ago, 2 SIM changes in the last 30 days. Previous holder tenure 808 days, account 1037 days old. IP did not change."
+- (b) 76: "Swap 5,799 minutes after the OTP. Same device and SIM type. IMSI and ICCID both changed. Location similarity 0.5. SIM activated 127 days ago, 2 changes in the last 30 days. Previous holder 225 days, account 1577 days old. IP did not change."
