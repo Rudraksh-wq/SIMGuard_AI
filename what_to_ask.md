@@ -14,3 +14,5 @@ Expected: "I understood 6 of the 11 values. 5 are still missing", and it asks fo
 - how long ago the SIM was activated
 - the previous holder's tenure
 - whether the IP changed
+4. SIM was changed 3 minutes after an OTP request. New device, IMSI and ICCID both changed, and the SIM type changed to eSIM. Location similarity is 0.01. The SIM was activated 0 days ago, with 6 SIM changes in the last 30 days. The previous holder had the number for 4 days. The account is 20 days old. IP address changed.
+Expected: all 11 values are read, the case is flagged, Laya’s gate says block (p ≈ 1.0), LightGBM and Isolation Forest both score high, and the overall score is high. This is the extreme case, so the score should be at least as high as case 1.Expected: all 11 values are read, the case is flagged, Laya’s gate says block (p ≈ 1.0), LightGBM and Isolation Forest both score high, and the overall score is high. This is the extreme case, so the score should be at least as high as case 1.
